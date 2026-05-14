@@ -97,13 +97,18 @@ For Clojure-style scratch calls, keep ordinary Odin calls commented out and eval
 the comment block:
 
 ```odin
-// target.answer()
-// target.some_proc(1, 2)
+// add(5, 2)
+// some_package_local_proc(1, 2)
 ```
 
 Place point on either line and run `M-x odineval-run-comment-block` or
 `C-c C-x`. With a prefix argument, the block is treated as statements and
 `--no-print` is passed to the CLI.
+
+Comment-block eval uses internal mode: the package is copied to a scratch
+directory, an existing entry `main` is renamed, and the generated eval `main`
+runs inside the same package. That means scratch comments can call local names
+directly instead of going through `target.`.
 
 ## Direction
 

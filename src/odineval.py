@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -17,6 +18,7 @@ class EvalConfig:
     print_result: bool = True
     extra_imports: tuple[str, ...] = ()
     import_path: str | None = None
+    package_name: str = "main"
 
 
 def odin_string(value: str) -> str:
@@ -51,12 +53,81 @@ def render_runner(config: EvalConfig) -> str:
     )
 
 
+def render_internal_runner(config: EvalConfig) -> str:
+    imports = ['import "core:fmt"']
+    imports.extend(config.extra_imports)
+
+    body: list[str] = []
+    if config.print_result:
+        body.append(f"    result := {config.code}")
+        body.append("    fmt.println(result)")
+    else:
+        for line in config.code.splitlines():
+            body.append(f"    {line}" if line.strip() else "")
+
+    return "\n".join(
+        [
+            f"package {config.package_name}",
+            "",
+            *imports,
+            "",
+            "main :: proc() {",
+            *body,
+            "}",
+            "",
+        ]
+    )
+
+
 def write_runner(config: EvalConfig, directory: Path) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     relative_import = os.path.relpath(config.package.resolve(), directory.resolve())
     config = replace(config, import_path=relative_import)
     path = directory / "main.odin"
     path.write_text(render_runner(config), encoding="utf-8")
+    return path
+
+
+def package_name_from_source(source: str) -> str:
+    match = re.search(r"(?m)^\s*package\s+([A-Za-z_][A-Za-z0-9_]*)\b", source)
+    if not match:
+        raise ValueError("could not find Odin package declaration")
+    return match.group(1)
+
+
+def rename_entry_main(source: str) -> str:
+    return re.sub(
+        r"(?m)^(\s*)main(\s*::\s*proc\b)",
+        r"\1odineval_original_main\2",
+        source,
+    )
+
+
+def copy_package_for_internal_eval(package: Path, directory: Path) -> str:
+    directory.mkdir(parents=True, exist_ok=True)
+    package_name: str | None = None
+    copied = False
+
+    for source_path in sorted(package.glob("*.odin")):
+        source = source_path.read_text(encoding="utf-8")
+        if package_name is None:
+            package_name = package_name_from_source(source)
+        source = rename_entry_main(source)
+        (directory / source_path.name).write_text(source, encoding="utf-8")
+        copied = True
+
+    if not copied:
+        raise ValueError(f"no .odin files found in package: {package}")
+    if package_name is None:
+        raise ValueError(f"could not determine package name: {package}")
+    return package_name
+
+
+def write_internal_runner(config: EvalConfig, directory: Path) -> Path:
+    package_name = copy_package_for_internal_eval(config.package.resolve(), directory)
+    config = replace(config, package_name=package_name)
+    path = directory / "odineval_runner.odin"
+    path.write_text(render_internal_runner(config), encoding="utf-8")
     return path
 
 
@@ -86,7 +157,11 @@ def command_eval(args: argparse.Namespace, action: str) -> int:
     keep_dir = Path(args.keep_dir).expanduser().resolve() if args.keep_dir else None
     with tempfile.TemporaryDirectory(prefix="odineval-") as tmp:
         runner_dir = keep_dir or Path(tmp)
-        runner = write_runner(config, runner_dir)
+        try:
+            runner = write_internal_runner(config, runner_dir) if args.internal else write_runner(config, runner_dir)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
 
         if args.show:
             print(runner.read_text(encoding="utf-8"), end="")
@@ -109,6 +184,11 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("code", help="Odin expression or statement snippet to run.")
         p.add_argument("--no-print", action="store_true", help="Treat code as statements and do not print a result.")
         p.add_argument("--show", action="store_true", help="Print generated Odin before invoking Odin.")
+        p.add_argument(
+            "--internal",
+            action="store_true",
+            help="Copy the target package to a scratch directory and evaluate code inside that package.",
+        )
         p.add_argument("--keep-dir", help="Write runner into this directory instead of a temporary directory.")
         p.add_argument(
             "--import",

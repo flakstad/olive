@@ -66,12 +66,13 @@ For Odin this is usually the directory containing the current file."
       (file-name-directory (expand-file-name buffer-file-name))
     default-directory))
 
-(defun odineval--cli-args (command package code &optional no-print show)
+(defun odineval--cli-args (command package code &optional no-print show internal)
   "Return odineval CLI args for COMMAND, PACKAGE, and CODE."
   (append
    (list "-m" "src.odineval" command package code)
    (when no-print (list "--no-print"))
-   (when show (list "--show"))))
+   (when show (list "--show"))
+   (when internal (list "--internal"))))
 
 (defun odineval--prepare-buffer (name)
   "Create and clear buffer NAME."
@@ -129,13 +130,13 @@ possible."
     (display-buffer result-buffer)
     (message "odineval exited %s" exit-code)))
 
-(defun odineval--run (command package code &optional no-print show)
+(defun odineval--run (command package code &optional no-print show internal)
   "Run odineval COMMAND for PACKAGE and CODE."
   (setq odineval--last-source-buffer (current-buffer))
   (let* ((default-directory (file-name-as-directory (expand-file-name odineval-root)))
          (stdout-buffer (generate-new-buffer " *odineval-stdout*"))
          (stderr-buffer (generate-new-buffer " *odineval-stderr*"))
-         (args (odineval--cli-args command package code no-print show)))
+         (args (odineval--cli-args command package code no-print show internal)))
     (make-process
      :name "odineval"
      :buffer stdout-buffer
@@ -206,7 +207,8 @@ possible."
                  (odineval-package-directory)
                  code
                  odineval-default-no-print
-                 odineval-show-generated))
+                 odineval-show-generated
+                 nil))
 
 ;;;###autoload
 (defun odineval-check-expression (code)
@@ -216,7 +218,8 @@ possible."
                  (odineval-package-directory)
                  code
                  odineval-default-no-print
-                 odineval-show-generated))
+                 odineval-show-generated
+                 nil))
 
 ;;;###autoload
 (defun odineval-run-region (start end &optional no-print)
@@ -227,7 +230,8 @@ With prefix argument NO-PRINT, treat the region as statements."
                  (odineval-package-directory)
                  (buffer-substring-no-properties start end)
                  (or no-print odineval-default-no-print)
-                 odineval-show-generated))
+                 odineval-show-generated
+                 nil))
 
 ;;;###autoload
 (defun odineval-check-region (start end &optional no-print)
@@ -238,7 +242,8 @@ With prefix argument NO-PRINT, treat the region as statements."
                  (odineval-package-directory)
                  (buffer-substring-no-properties start end)
                  (or no-print odineval-default-no-print)
-                 odineval-show-generated))
+                 odineval-show-generated
+                 nil))
 
 ;;;###autoload
 (defun odineval-run-comment-block (&optional no-print)
@@ -255,7 +260,8 @@ This is the Odin analogue of keeping exploratory calls in a Clojure
                  (odineval-package-directory)
                  (odineval-comment-block-code)
                  (or no-print odineval-default-no-print)
-                 odineval-show-generated))
+                 odineval-show-generated
+                 t))
 
 ;;;###autoload
 (defun odineval-check-comment-block (&optional no-print)
@@ -266,7 +272,8 @@ With prefix argument NO-PRINT, treat the code as statements."
                  (odineval-package-directory)
                  (odineval-comment-block-code)
                  (or no-print odineval-default-no-print)
-                 odineval-show-generated))
+                 odineval-show-generated
+                 t))
 
 ;;;###autoload
 (defun odineval-run-proc (name args)
