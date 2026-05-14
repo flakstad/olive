@@ -98,7 +98,7 @@ Default `odin-mode` keys installed by `odineval-setup-odin-mode-keys`:
 - `C-c C-p`: run current call, line, or `//` block and open the result buffer
 - `C-c C-i`: insert result as a `// => ...` comment below the eval unit
 - `C-c C-r`: run region
-- `C-c C-c`: same as `C-c C-e`, aligned with CIDER eval-top-level muscle memory
+- `C-c C-c`: eval the whole current line inline, ignoring cursor subexpression
 - `C-c C-x`: run uncommented `//` block at point
 - `C-c C-k`: check prompted expression
 - `C-c C-a`: run ordinary package main via `odin run .`

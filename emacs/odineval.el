@@ -146,6 +146,18 @@ treated as command output."
         (overlay-put ov 'evaporate t)
         (overlay-put ov 'after-string display-text)))))
 
+(defun odineval--message-result (text exit-code)
+  "Show a concise minibuffer message for TEXT and EXIT-CODE."
+  (let ((trimmed (string-trim text)))
+    (message "%s"
+             (cond
+              ((not (zerop exit-code))
+               (if (string-empty-p trimmed)
+                   (format "odineval exited %s" exit-code)
+                 (replace-regexp-in-string "[\n\r\t ]+" " " trimmed)))
+              ((string-empty-p trimmed) "")
+              (t (replace-regexp-in-string "[\n\r\t ]+" " " trimmed))))))
+
 (defun odineval--insert-comment-result (buffer line-end text exit-code)
   "Insert TEXT as a // => result comment in BUFFER after LINE-END."
   (when (buffer-live-p buffer)
@@ -229,14 +241,14 @@ possible."
                      (visible (cdr visible-data)))
                 (odineval--display-generated generated)
                 (odineval--show-inline-result source-buffer (car bounds) (cdr bounds) visible exit-code)
-                (message "odineval exited %s" exit-code)))
+                (odineval--message-result visible exit-code)))
              ('comment
               (let* ((visible-data (odineval--visible-output stdout stderr show))
                      (generated (car visible-data))
                      (visible (cdr visible-data)))
                 (odineval--display-generated generated)
                 (odineval--insert-comment-result source-buffer (cdr bounds) visible exit-code)
-                (message "odineval exited %s" exit-code)))
+                (odineval--message-result visible exit-code)))
              (_
               (odineval--display-output stdout stderr exit-code show)))))))))
 
@@ -411,6 +423,20 @@ With prefix argument NO-PRINT, treat the line as statements."
                    t
                    'inline
                    (odineval-current-line-bounds))))
+
+;;;###autoload
+(defun odineval-run-whole-line (&optional no-print)
+  "Run the whole current line and show the result inline.
+This intentionally ignores point-sensitive call/atom selection."
+  (interactive "P")
+  (odineval--run "run"
+                 (odineval-package-directory)
+                 (odineval-current-line-code)
+                 (or no-print odineval-default-no-print)
+                 odineval-show-generated
+                 t
+                 'inline
+                 (odineval-current-line-bounds)))
 
 ;;;###autoload
 (defun odineval-insert-line-result (&optional no-print)
@@ -593,7 +619,7 @@ With prefix argument NO-PRINT, treat the code as statements."
   (local-set-key (kbd "C-c C-p") #'odineval-popup-line)
   (local-set-key (kbd "C-c C-i") #'odineval-insert-line-result)
   (local-set-key (kbd "C-c C-r") #'odineval-run-region)
-  (local-set-key (kbd "C-c C-c") #'odineval-run-line)
+  (local-set-key (kbd "C-c C-c") #'odineval-run-whole-line)
   (local-set-key (kbd "C-c C-x") #'odineval-run-comment-block)
   (local-set-key (kbd "C-c C-k") #'odineval-check-expression)
   (local-set-key (kbd "C-c C-a") #'odineval-run-package)
