@@ -94,8 +94,8 @@ Default commands:
 
 Default `odin-mode` keys installed by `odineval-setup-odin-mode-keys`:
 
-- `C-c C-e`: run current line or `//` block and show result inline
-- `C-c C-p`: run current line or `//` block and open the result buffer
+- `C-c C-e`: run current call, line, or `//` block and show result inline
+- `C-c C-p`: run current call, line, or `//` block and open the result buffer
 - `C-c C-i`: insert result as a `// => ...` comment below the eval unit
 - `C-c C-r`: run region
 - `C-c C-c`: run proc
@@ -129,6 +129,15 @@ Inserted result comments look like this and are ignored by later block evals:
 // add(x, 3)
 // => 4
 ```
+
+For ordinary Odin code, if point is just after a call expression, that call is
+used instead of the whole line:
+
+```odin
+fmt.println(add(5, 2)|)
+```
+
+`C-c C-e` evaluates `add(5, 2)`, not the full `fmt.println(...)` line.
 
 Comment-block eval uses internal mode: the package is copied to a scratch
 directory, an existing entry `main` is renamed, and the generated eval `main`

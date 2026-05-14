@@ -306,15 +306,53 @@ possible."
                 (line-end-position)))))
     (string-trim (odineval--strip-line-comment-prefix line))))
 
+(defun odineval--call-bounds-before-point ()
+  "Return bounds of the parenthesized call ending at or before point.
+This is a lightweight Odin-aware helper for cases like:
+
+  fmt.println(add(5,2)|)
+
+where point is just after the inner call."
+  (save-excursion
+    (skip-chars-backward " \t\n")
+    (when (and (> (point) (point-min))
+               (eq (char-before) ?\)))
+      (let ((end (point))
+            (depth 0)
+            (open nil))
+        (while (and (> (point) (point-min))
+                    (not open))
+          (backward-char)
+          (cond
+           ((eq (char-after) ?\))
+            (setq depth (1+ depth)))
+           ((eq (char-after) ?\()
+            (setq depth (1- depth))
+            (when (zerop depth)
+              (setq open (point))))))
+        (when open
+          (goto-char open)
+          (skip-chars-backward " \t")
+          (skip-chars-backward "A-Za-z0-9_\\.")
+          (when (< (point) open)
+            (cons (point) end)))))))
+
+(defun odineval-current-line-or-call-unit ()
+  "Return current call expression before point, falling back to current line."
+  (if-let ((bounds (odineval--call-bounds-before-point)))
+      (cons (buffer-substring-no-properties (car bounds) (cdr bounds)) bounds)
+    (cons (odineval-current-line-code)
+          (cons (line-beginning-position) (line-end-position)))))
+
 (defun odineval-current-unit ()
   "Return (CODE . BOUNDS) for the current eval unit.
 When point is inside a scratch // block, the unit is the whole block.
-Otherwise the unit is the current line."
+Otherwise prefer the parenthesized call ending before point, falling back to the
+current line."
   (if (odineval--comment-line-p)
       (let ((bounds (odineval--comment-block-bounds)))
         (cons (odineval-comment-block-code) bounds))
-    (cons (odineval-current-line-code)
-          (cons (line-beginning-position) (line-end-position)))))
+    (odineval-current-line-or-call-unit)))
 
 ;;;###autoload
 (defun odineval-run-expression (code)
