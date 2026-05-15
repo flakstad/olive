@@ -211,7 +211,10 @@ treated as command output."
     (with-current-buffer buffer
       (save-excursion
         (goto-char line-end)
-        (forward-line 1)
+        (end-of-line)
+        (if (eobp)
+            (insert "\n")
+          (forward-line 1))
         (while (and (not (eobp))
                     (looking-at-p "[[:space:]]*//[[:space:]]*=>"))
           (delete-region (line-beginning-position)
@@ -319,43 +322,81 @@ possible."
     (and (looking-at-p "[[:space:]]*//")
          (not (looking-at-p "[[:space:]]*//[[:space:]]*=>")))))
 
+(defun odineval--comment-block-bounds ()
+  "Return bounds for the enclosing /* ... */ comment block around point."
+  (let* ((cursor (point))
+         (line-delimiter-p
+          (save-excursion
+            (beginning-of-line)
+            (or (looking-at-p "[[:space:]]*/\\*[[:space:]]*$")
+                (looking-at-p "[[:space:]]*\\*/[[:space:]]*$"))))
+         (line-start (save-excursion (beginning-of-line) (point)))
+         (line-end (save-excursion (end-of-line) (point)))
+         (line-close-p
+          (save-excursion
+            (beginning-of-line)
+            (looking-at-p "[[:space:]]*\\*/[[:space:]]*$")))
+         (scan-end (if line-delimiter-p (line-end-position) cursor))
+         (stack '())
+         (line-close-bounds nil))
+    (save-excursion
+      (goto-char (point-min))
+      (while (re-search-forward "/\\*\\|\\*/" scan-end t)
+        (if (string= (match-string 0) "/*")
+            (push (match-beginning 0) stack)
+          (when stack
+            (let ((closed (cons (pop stack) (match-end 0))))
+              (when (and line-close-p
+                         (>= (match-beginning 0) line-start)
+                         (<= (match-end 0) line-end))
+                (setq line-close-bounds closed)))))))
+    (cond
+     (line-close-p
+      (or line-close-bounds
+          (error "Point is not inside a /* ... */ comment block")))
+     ((consp stack)
+      (save-excursion
+        (goto-char cursor)
+        (unless (search-forward "*/" nil t)
+          (error "Unterminated /* ... */ comment block around point"))
+        (cons (car stack) (point))))
+     (t
+      (error "Point is not inside a /* ... */ comment block")))))
+
+(defun odineval--strip-comment-block-prefix (text)
+  "Strip Odin /* ... */ comment markers from TEXT and normalize lines."
+  (let* ((without-open
+          (replace-regexp-in-string
+           "\\`[[:space:]]*/\\*" "" text))
+         (without-close
+          (replace-regexp-in-string
+           "\\*/[[:space:]]*\\'" "" without-open))
+         (lines
+          (mapcar
+           (lambda (line)
+             (replace-regexp-in-string "\\`[[:space:]]*\\*+[[:space:]]*" "" line))
+           (split-string without-close "\n")))
+         (without-results
+          (string-join
+           (seq-remove
+            (lambda (line)
+              (string-match-p "\\`[[:space:]]*//[[:space:]]*=>" line))
+            lines)
+           "\n")))
+    (string-trim without-results)))
+
 (defun odineval--result-comment-line-p ()
   "Return non-nil when the current line is an odineval // => result line."
   (save-excursion
     (beginning-of-line)
     (looking-at-p "[[:space:]]*//[[:space:]]*=>")))
 
-(defun odineval--comment-block-bounds ()
-  "Return bounds for the contiguous // comment block around point."
-  (unless (odineval--comment-line-p)
-    (error "Point is not inside a // comment block"))
-  (save-excursion
-    (let (start end)
-      (while (and (not (bobp))
-                  (progn
-                    (forward-line -1)
-                    (odineval--comment-line-p))))
-      (unless (odineval--comment-line-p)
-        (forward-line 1))
-      (setq start (line-beginning-position))
-      (while (and (not (eobp))
-                  (odineval--comment-line-p))
-        (forward-line 1))
-      (setq end (point))
-      (cons start end))))
-
 (defun odineval-comment-block-code ()
-  "Return uncommented code from the contiguous // comment block around point."
+  "Return uncommented code from the enclosing /* ... */ comment block around point."
   (let* ((bounds (odineval--comment-block-bounds))
          (text (buffer-substring-no-properties (car bounds) (cdr bounds)))
-         (without-results
-          (string-join
-           (seq-remove
-            (lambda (line)
-              (string-match-p "\\`[[:space:]]*//[[:space:]]*=>" line))
-            (split-string text "\n"))
-           "\n")))
-    (string-trim (odineval--strip-line-comment-prefix without-results))))
+         (text-no-markers (odineval--strip-comment-block-prefix text)))
+    (string-trim (odineval--strip-line-comment-prefix text-no-markers))))
 
 (defun odineval-current-line-code ()
   "Return code from the current line, stripping a leading // if present."
@@ -419,12 +460,11 @@ where point is just after the inner call."
 
 (defun odineval-current-unit ()
   "Return (CODE . BOUNDS) for the current eval unit.
-When point is inside a scratch // block, the unit is the whole block.
+When point is inside a `/* ... */` block, the unit is the whole block.
 Otherwise prefer the parenthesized call ending before point, falling back to the
 atom before point, then the current line."
-  (if (odineval--comment-line-p)
-      (let ((bounds (odineval--comment-block-bounds)))
-        (cons (odineval-comment-block-code) bounds))
+  (if-let ((bounds (ignore-errors (odineval--comment-block-bounds))))
+      (cons (odineval-comment-block-code) bounds)
     (odineval-current-line-call-or-atom-unit)))
 
 ;;;###autoload
@@ -454,10 +494,12 @@ atom before point, then the current line."
 ;;;###autoload
 (defun odineval-run-line (&optional no-print)
   "Run the current eval unit and show the result inline.
-If point is inside a scratch // block, run the whole block. Otherwise run the
-current line. This is intended for Clojure-style scratch lines such as:
+If point is inside a scratch `/* ... */` block, run the whole block.
+Otherwise run the current line. This is intended for scratch blocks such as:
 
-  // add(5,2)
+  /*
+  add(5,2)
+  */
 
 With prefix argument NO-PRINT, treat the line as statements."
   (interactive "P")
@@ -469,7 +511,7 @@ With prefix argument NO-PRINT, treat the line as statements."
                    odineval-show-generated
                    t
                    'inline
-                   (odineval-current-line-bounds))))
+                   (cdr unit))))
 
 ;;;###autoload
 (defun odineval-run-whole-line (&optional no-print)
@@ -515,7 +557,7 @@ This intentionally ignores point-sensitive call/atom selection."
 
 ;;;###autoload
 (defun odineval-insert-comment-block-result (&optional no-print)
-  "Run the current // comment block and insert a // => result comment."
+  "Run the current `/* ... */` comment block and insert a // => result comment."
   (interactive "P")
   (let ((bounds (odineval--comment-block-bounds)))
     (odineval--run "run"
@@ -568,36 +610,41 @@ With prefix argument NO-PRINT, treat the region as statements."
 
 ;;;###autoload
 (defun odineval-run-comment-block (&optional no-print)
-  "Run uncommented code from the contiguous // comment block around point.
+  "Run uncommented code from the enclosing `/* ... */` comment block.
 With prefix argument NO-PRINT, treat the code as statements.
 
 This is the Odin analogue of keeping exploratory calls in a Clojure
 `(comment ...)` form:
 
-  // target.answer()
-  // target.some_proc(1, 2)"
+  /*
+  target.answer()
+  target.some_proc(1, 2)
+  */"
   (interactive "P")
-  (odineval--run "run"
-                 (odineval-package-directory)
-                 (odineval-comment-block-code)
-                 (or no-print odineval-default-no-print)
-                 odineval-show-generated
-                 t
-                 'inline
-                 (odineval-current-line-bounds)))
+  (let ((bounds (odineval--comment-block-bounds)))
+    (odineval--run "run"
+                   (odineval-package-directory)
+                   (odineval-comment-block-code)
+                   (or no-print odineval-default-no-print)
+                   odineval-show-generated
+                   t
+                   'inline
+                   bounds)))
 
 ;;;###autoload
 (defun odineval-check-comment-block (&optional no-print)
-  "Check uncommented code from the contiguous // comment block around point.
+  "Check uncommented code from the enclosing `/* ... */` comment block.
 With prefix argument NO-PRINT, treat the code as statements."
   (interactive "P")
-  (odineval--run "check"
-                 (odineval-package-directory)
-                 (odineval-comment-block-code)
-                 (or no-print odineval-default-no-print)
-                 odineval-show-generated
-                 t
-                 'buffer))
+  (let ((bounds (odineval--comment-block-bounds)))
+    (odineval--run "check"
+                   (odineval-package-directory)
+                   (odineval-comment-block-code)
+                   (or no-print odineval-default-no-print)
+                   odineval-show-generated
+                   t
+                   'buffer
+                   bounds)))
 
 (defun odineval--command-buffer (directory)
   "Return the command output buffer for DIRECTORY."

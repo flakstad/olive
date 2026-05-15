@@ -82,10 +82,10 @@ Minimal setup:
 Default commands:
 
 - `M-x odineval-run-expression`: prompt for an Odin expression and print result
-- `M-x odineval-run-line`: run current line, or whole `//` block at point
+- `M-x odineval-run-line`: run current line, or whole `/* ... */` block at point
 - `M-x odineval-run-region`: run selected expression; with prefix, run as statements
 - `M-x odineval-check-expression`: compile-check a generated runner
-- `M-x odineval-run-comment-block`: run a contiguous `//` comment block as code
+- `M-x odineval-run-comment-block`: run a contiguous `/* ... */` comment block as code
 - `M-x odineval-run-proc`: call `target.<proc>(<args>)`
 - `M-x odineval-run-proc-no-args`: call `target.<symbol-at-point>()`
 - `M-x odineval-run-package`: run ordinary `odin run .` in the current package
@@ -101,12 +101,12 @@ Default commands:
 
 Default `odin-mode` keys installed by `odineval-setup-odin-mode-keys`:
 
-- `C-c C-e`: run current call, line, or `//` block and show result inline
-- `C-c C-p`: run current call, line, or `//` block and open the result buffer
+- `C-c C-e`: run current call, line, or `/* ... */` block and show result inline
+- `C-c C-p`: run current call, line, or `/* ... */` block and open the result buffer
 - `C-c C-i`: insert result as a `// => ...` comment below the eval unit
 - `C-c C-r`: run region
 - `C-c C-c`: eval the whole current line inline, ignoring cursor subexpression
-- `C-c C-x`: run uncommented `//` block at point
+- `C-c C-x`: run uncommented `/* ... */` block at point
 - `C-c C-k`: check prompted expression
 - `C-c C-a`: run ordinary package main via `odin run .`
 - `C-c C-b`: build ordinary package via `odin build .`
@@ -146,15 +146,17 @@ sample_test :: proc(t: ^testing.T) {
 }
 ```
 
-For Clojure-style scratch calls, keep ordinary Odin calls commented out and eval
-the comment block:
+For Clojure-style scratch calls, keep ordinary Odin calls inside a multiline
+comment block and evaluate that block:
 
 ```odin
-// add(5, 2)
-// some_package_local_proc(1, 2)
+/*
+add(5, 2)
+some_package_local_proc(1, 2)
+*/
 ```
 
-Place point on either line and run `C-c C-e` for an inline result, `C-c C-p`
+Place point inside the block and run `C-c C-e` for an inline result, `C-c C-p`
 for the result buffer, or `C-c C-i` to insert the result below the block as a
 comment. With a prefix argument, the block is treated as statements and
 `--no-print` is passed to the CLI.
@@ -184,7 +186,7 @@ add(5, 2|)
 
 `C-c C-e` evaluates `2`.
 
-Comment-block eval uses internal mode: the package is copied to a scratch
+Block-comment eval uses internal mode: the package is copied to a scratch
 directory, an existing entry `main` is renamed, and the generated eval `main`
 runs inside the same package. That means scratch comments can call local names
 directly instead of going through `target.`.

@@ -55,7 +55,31 @@ class RenderTests(unittest.TestCase):
         commented = comment_top_level_scratch_lines(source)
 
         self.assertIn("add :: proc", commented)
-        self.assertIn("// odineval scratch: add(5,3)", commented)
+        self.assertIn("/* odineval scratch: add(5,3) */", commented)
+
+    def test_comment_top_level_scratch_lines_preserves_block_comment(self) -> None:
+        source = textwrap.dedent(
+            """\
+            package main
+
+            add :: proc(a: int, b: int) -> int {
+                return a + b
+            }
+
+            /*
+            add(5,3)
+            */
+
+            another :: proc(a: int) -> int {
+                return a * 2
+            }
+            """
+        )
+
+        commented = comment_top_level_scratch_lines(source)
+
+        self.assertIn("/*\nadd(5,3)\n*/", commented)
+        self.assertNotIn("odineval scratch: add(5,3)", commented)
 
 
 @unittest.skipIf(shutil.which("odin") is None, "odin not available")
@@ -142,7 +166,7 @@ class OdinIntegrationTests(unittest.TestCase):
                         return a + b
                     }
 
-                    // add(5, 2)
+                    /* add(5, 2) */
                     add(5, 3)
 
                     main :: proc() {

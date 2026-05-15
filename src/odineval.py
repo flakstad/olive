@@ -128,22 +128,40 @@ def comment_top_level_scratch_lines(source: str) -> str:
     This lets files contain Clojure-style scratch calls such as `add(5, 3)` at
     file scope while internal eval compiles a temp copy. It is intentionally
     conservative and line-oriented; valid declarations are left unchanged.
+
+    Lines that appear inside an existing block comment are preserved so
+    multiline `/* ... */` scratch blocks are safe.
     """
     out: list[str] = []
     depth = 0
+    in_comment = False
     for line in source.splitlines():
         stripped = line.strip()
+        if in_comment:
+            out.append(line)
+            if "*/" in stripped:
+                in_comment = False
+            continue
+
         at_top = depth == 0
+        is_comment_start = stripped.startswith("/*")
+        is_comment_line = stripped.startswith("//") or is_comment_start or stripped.startswith("*")
+
+        if is_comment_start and "*/" not in stripped:
+            in_comment = True
+
         should_comment = (
             at_top
             and stripped
-            and not stripped.startswith("//")
-            and not stripped.startswith("/*")
-            and not stripped.startswith("*")
+            and not is_comment_line
             and not stripped in {"}", "},"}
             and not DECLARATION_RE.match(line)
         )
-        out.append(f"// odineval scratch: {line}" if should_comment else line)
+        if should_comment:
+            indent = line[: len(line) - len(line.lstrip())]
+            out.append(f"{indent}/* odineval scratch: {stripped} */")
+        else:
+            out.append(line)
         depth += line.count("{") - line.count("}")
         if depth < 0:
             depth = 0
