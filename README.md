@@ -128,7 +128,7 @@ compiled Odin `probe` CLI and displays command output in `*Probe*`.
 Minimal setup:
 
 ```elisp
-(add-to-list 'load-path "/Users/andreas/Projects/probe/emacs")
+(add-to-list 'load-path "<path-to>/probe/emacs")
 (require 'probe)
 
 ;; If you use odin-mode:
@@ -210,7 +210,7 @@ sample_test :: proc(t: ^testing.T) {
 }
 ```
 
-For Clojure-style scratch calls, keep ordinary Odin calls inside a multiline
+For scratch calls, keep ordinary Odin calls inside a multiline
 comment block and run that block:
 
 ```odin
@@ -254,57 +254,3 @@ Block-comment probing uses internal mode: the package is copied to a scratch
 directory, an existing entry `main` is renamed, and the generated probe `main`
 runs inside the same package. That means scratch comments can call local names
 directly instead of going through `target.`.
-
-## Direction
-
-Two modes matter:
-
-- External probing: generate a separate runner package that imports the target
-  package as `target`. This works for exported/package-visible APIs.
-- Internal probing: copy or shadow the package into a scratch directory and add a
-  temporary runner file in the same package. This allows calling package-local
-  helpers without modifying source files.
-- Explicit store: write and read named plain-text values on disk. This supports
-  REPL-like workflows where a result can be reused later without pretending that
-  Odin has a persistent interactive heap.
-
-External probing is useful for exported/package-visible APIs. Internal probing is
-the workflow that makes scratch comments useful while keeping ordinary Odin
-source as the source of truth.
-
-## Future Considerations
-
-The current tool is good enough to use while learning Odin. Prefer using it for
-a while before adding more surface area; real friction should drive the next
-features.
-
-Likely useful adjacent work:
-
-- Test at point: detect the surrounding `@(test)` procedure and run only that
-  test via `-define:ODIN_TEST_NAMES=package.test_name`.
-- Multi-package project commands: discover package directories and run
-  `odin check` or `odin test` across them, instead of assuming the project root
-  itself is a buildable package.
-- Failure navigation: parse Odin compiler output into Emacs compilation-mode or
-  xref-friendly locations so `next-error` jumps directly to failures.
-- Result cleanup: remove generated `// =>` result comments from a buffer or
-  selected region.
-- Documentation-at-point: keep this in the Odin/OLS Emacs setup rather than
-  probe. Bind commands such as `eglot-help-at-point` or `eldoc-doc-buffer`
-  for hover/docs buffers.
-- Learning examples: keep a small Odin scratch/example project covering
-  arrays, slices, maps, allocators, errors, tests, `defer`, structs, enums, and
-  procedure groups.
-
-The main Odin learning axis is allocation and ownership. Probing is useful for
-quick feedback, but returned maps, slices, strings, and allocator-backed helpers
-still need explicit lifetime thinking.
-
-## Non-Goals
-
-- Do not interpret Odin.
-- Do not invent dynamic state or a hidden runtime.
-- Do not make stored values implicit. Disk-backed state should be visible and
-  named by the user.
-- Do not require a custom Odin syntax.
-- Do not hide compiler errors. Generated Odin should be inspectable.
