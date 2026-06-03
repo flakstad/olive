@@ -36,14 +36,16 @@ Run_Host :: struct {
 }
 
 Session :: struct {
-    module_path: string,
-    state:       rawptr,
-    state_size:  int,
-    state_align: int,
-    core:        Core_Symbols,
-    generation:  int,
-    last_write:  time.Time,
-    retained:    [dynamic]dynlib.Library,
+    module_path:        string,
+    state:              rawptr,
+    state_size:         int,
+    state_align:        int,
+    core:               Core_Symbols,
+    generation:         int,
+    last_write:         time.Time,
+    last_failed_write:  time.Time,
+    has_reported_error: bool,
+    retained:           [dynamic]dynlib.Library,
 }
 
 State_Size :: proc($T: typeid) -> int {
@@ -227,10 +229,17 @@ poll_session :: proc(session: ^Session, app_symbols: ^$T, state: ^$S, init_state
     if time.time_to_unix_nano(write_time) == time.time_to_unix_nano(session.last_write) {
         return {}, false
     }
+    failed_write_time := time.time_to_unix_nano(session.last_failed_write)
+    current_write_time := time.time_to_unix_nano(write_time)
+    if session.has_reported_error && current_write_time == failed_write_time {
+        return {}, false
+    }
 
     next_generation := session.generation + 1
     core, new_write_time, message, ok := load_core(session.module_path, session.state, session.state_size, session.state_align, next_generation, true)
     if !ok {
+        session.last_failed_write = write_time
+        session.has_reported_error = true
         return Reload_Event{kind = .Reload_Failed, generation = session.generation, message = message}, true
     }
 
@@ -240,6 +249,8 @@ poll_session :: proc(session: ^Session, app_symbols: ^$T, state: ^$S, init_state
     _, symbols_ok := dynlib.initialize_symbols(app_symbols, shadow)
     if !symbols_ok {
         unload_core(&core, session.state)
+        session.last_failed_write = write_time
+        session.has_reported_error = true
         return Reload_Event{kind = .Reload_Failed, generation = session.generation, message = "failed to reload app symbols"}, true
     }
 
@@ -250,6 +261,7 @@ poll_session :: proc(session: ^Session, app_symbols: ^$T, state: ^$S, init_state
     session.core = core
     session.generation = next_generation
     session.last_write = new_write_time
+    session.has_reported_error = false
     return Reload_Event{kind = .Reloaded, generation = session.generation}, true
 }
 
