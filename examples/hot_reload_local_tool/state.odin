@@ -22,17 +22,10 @@ Report_State :: struct {
     summary: string,
 }
 
-Subsystems :: struct {
-    parser: ^Parser_State,
-    index:  ^Index_State,
-    report: ^Report_State,
-}
-
 Tool_State :: struct {
-    parser:     Parser_State,
-    index:      Index_State,
-    report:     Report_State,
-    systems:    Subsystems,
-    cursor:     int,
-    documents:  [MAX_DOCUMENTS]Document,
+    parser:    Parser_State,
+    index:     Index_State,
+    report:    Report_State,
+    cursor:    int,
+    documents: [MAX_DOCUMENTS]Document,
 }

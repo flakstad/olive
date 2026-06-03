@@ -9,40 +9,27 @@ init :: proc(state: ^Tool_State) {
         Document{"notes.md", "reload keeps state while code changes"},
         Document{"todo.txt", "ship examples with distinct workflows"},
         Document{"ops.log", "worker processed request and updated cache"},
-        Document{"readme.md", "durable state can point at subsystems"},
+        Document{"readme.md", "durable state is composed from subsystems"},
         Document{},
         Document{},
         Document{},
         Document{},
     }
-    wire_subsystems(state)
     state.report.summary = "started"
 }
 
-wire_subsystems :: proc(state: ^Tool_State) {
-    state.systems.parser = &state.parser
-    state.systems.index = &state.index
-    state.systems.report = &state.report
-}
-
 on_load :: proc(state: ^Tool_State, is_reload: bool) {
-    wire_subsystems(state)
     if is_reload {
         state.report.reloads += 1
-        state.report.summary = "code reloaded; subsystem pointers rewired"
+        state.report.summary = "code reloaded; durable subsystem state preserved"
     }
 }
 
 process_batch :: proc(state: ^Tool_State) {
-    wire_subsystems(state)
     doc := next_document(state)
-    words := count_words(doc.text)
-
-    state.systems.parser.documents_seen += 1
-    state.systems.index.total_words += words
-    state.systems.index.last_name = doc.name
-    state.systems.report.batches += 1
-    state.systems.report.summary = fmt.tprintf("%s: %d words", doc.name, words)
+    words := parse_document(&state.parser, doc)
+    index_document(&state.index, doc, words)
+    update_report(&state.report, doc, words)
 
     fmt.printf(
         "batch=%d reloads=%d docs=%d total_words=%d last=%s summary=%s\n",
@@ -59,6 +46,21 @@ next_document :: proc(state: ^Tool_State) -> Document {
     doc := state.documents[state.cursor % 4]
     state.cursor += 1
     return doc
+}
+
+parse_document :: proc(parser: ^Parser_State, doc: Document) -> int {
+    parser.documents_seen += 1
+    return count_words(doc.text)
+}
+
+index_document :: proc(index: ^Index_State, doc: Document, words: int) {
+    index.total_words += words
+    index.last_name = doc.name
+}
+
+update_report :: proc(report: ^Report_State, doc: Document, words: int) {
+    report.batches += 1
+    report.summary = fmt.tprintf("%s: %d words", doc.name, words)
 }
 
 count_words :: proc(text: string) -> int {
