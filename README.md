@@ -169,17 +169,35 @@ Scratch eval is mostly intended for editor integrations. From Emacs, or another
 editor integration, you can run a selected expression, the current line, a proc
 call, or a comment block without editing your program's `main`.
 
-Comment blocks are a convenient way to keep small experiments near the code:
+It is useful for trying calls near the code they exercise:
+
+```odin
+add :: proc(a, b: int) -> int {
+    return a + b
+}
+
+// add(5, 2)  <cursor>
+```
+
+With the cursor on the comment line, an editor command can evaluate just
+`add(5, 2)` in the package context and show the result. The comment stays in
+your source as a small scratch note.
+
+Multi-line comment blocks work the same way, except Olive evaluates the whole
+block:
 
 ```odin
 /*
-add(5, 2)
-some_package_local_proc(1, 2)
-*/
+first := add(5, 2)
+second := add(first, 10)
+second
+*/  <cursor>
 ```
 
 Olive temporarily generates an Odin runner for the selected code, compiles it
-with `odin`, and shows the result back in the editor.
+with `odin`, and shows the result back in the editor. For a single `//` comment
+line, Olive evaluates that line. For a `/* ... */` block, it evaluates the whole
+block.
 
 You can also run eval from the CLI:
 
