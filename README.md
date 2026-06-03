@@ -27,38 +27,106 @@ the reload host pick up the rebuilt module without throwing away state. This is
 useful for games, local tools, servers, simulations, editors, and other programs
 where restarting the whole process interrupts the work.
 
-Create a starter project:
+The development workflow has two moving parts:
+
+- `olive run` starts the program in development mode. It builds a small resident
+  host and a reloadable module, then keeps calling your reload adapter's `run`
+  proc.
+- `olive build` builds the reloadable module manually. `olive watch` does the
+  same automatically whenever watched Odin files change.
+
+Your production program stays separate from this. Keep a normal `main` proc and
+run it with `odin run .` or build it with `odin build .` when you do not want the
+reload workflow involved.
+
+## Getting Started
+
+Start from scratch:
 
 ```sh
 ./olive init scratch
 cd scratch
 odin run .
-```
-
-Run the reload host:
-
-```sh
 ../olive run
 ```
 
-In another terminal, keep the reloadable module rebuilding as you save files:
+`olive init` creates a small ordinary Odin program plus a `reload` directory. The
+ordinary program has `main.odin`, `state.odin`, and a small update proc. The
+reload directory contains `reload.odin`, which adapts that program to Olive's
+development host, and `reload.conf`, which tells Olive what package to build,
+what state type to preserve, and where to put generated files.
+
+The reload adapter contains the development entry point. Its `run` proc is what
+Olive calls while the host is alive. In the generated starter that proc advances
+the program by one small step, then returns so Olive can check whether a newly
+built module is ready to load.
+
+`odin run .` is not required for hot reload. It is there to show that the
+generated starter is still a normal Odin program before you run it through
+Olive.
+
+Add Olive to an existing project:
+
+1. Keep your existing `main` proc as the production entry point.
+2. Put durable program data in one root state type, for example
+   `Program_State`.
+3. Add a `reload/reload.odin` adapter package that imports your program package
+   and exposes a `run(state, host)` proc.
+4. Add `reload/reload.conf`, or start with `olive init` in a temporary directory
+   and copy the shape from its generated `reload` files.
+
+Then run the development host from the project root:
 
 ```sh
-../olive watch
+olive run
 ```
 
-Or build manually:
+In another terminal, build the reloadable module when you save changes:
 
 ```sh
-../olive build
+olive build
 ```
 
-The reload adapter's `run` proc should return regularly. Olive calls it
-repeatedly and checks for reloads between calls. For a game that usually means
+Or leave the watcher running:
+
+```sh
+olive watch
+```
+
+`olive run`, `olive build`, and `olive watch` use `reload/reload.conf` by
+default. Pass a config path only when your project uses a different location.
+
+## State Management
+
+Olive preserves one root state value across reloads. Model that root state as
+the durable state of the running program: world data, loaded documents, server
+configuration, caches, UI state, and pointers to subsystems that should survive
+code reloads.
+
+You do not have to put everything in one flat struct. Prefer a root state that
+owns or points to smaller subsystem structs:
+
+```odin
+Program_State :: struct {
+    world:    World_State,
+    renderer: ^Renderer_State,
+    assets:   ^Asset_Cache,
+}
+```
+
+Initialize durable state in your normal production startup path and mirror that
+through the reload adapter's optional `init` proc. Use `on_load` for reload-only
+work such as refreshing function tables, logging a reload, or reconnecting code
+that depends on the new module generation.
+
+The adapter's `run` proc should return regularly. For a game that usually means
 one frame; for a server, one request poll; for a worker, one small batch.
 
-If you change the root state layout, restart `olive run`. The watcher can stay
-running.
+Changing proc bodies is the happy path: run stays alive, the next build is
+loaded, and state continues. Changing the layout of the root state type is
+different. Olive rejects that reload because the resident host owns the old
+memory layout. When that happens, stop and restart `olive run`. Any
+`olive watch` process can stay running; it will keep building the new module.
 
 ## Scratch Eval
 
