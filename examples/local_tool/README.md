@@ -1,4 +1,4 @@
-# Hot Reload Local Tool
+# Local Tool
 
 This example is a long-running local worker/tool, not a game and not a server.
 It processes small documents into an index and report.
@@ -11,21 +11,21 @@ they need.
 Production run:
 
 ```sh
-odin run examples/hot_reload_local_tool
+odin run examples/local_tool
 ```
 
 Reload run:
 
 ```sh
 odin build cmd/olive -out:olive
-./olive run examples/hot_reload_local_tool/reload/reload.conf
+./olive run examples/local_tool/reload/reload.conf
 ```
 
 In another terminal:
 
 ```sh
-./olive watch examples/hot_reload_local_tool/reload/reload.conf
+./olive watch examples/local_tool/reload/reload.conf
 ```
 
-Edit `tool.odin` to change parsing/reporting behavior. The durable parser,
+Edit `main.odin` to change parsing/reporting behavior. The durable parser,
 index, and report state continue across reloads.

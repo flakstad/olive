@@ -8,7 +8,7 @@ Game_State :: game.Game_State
 
 host_init :: proc() {
   if !ray.IsWindowReady() {
-    ray.InitWindow(game.WINDOW_WIDTH, game.WINDOW_HEIGHT, "Olive Raylib Hot Reload")
+    ray.InitWindow(game.WINDOW_WIDTH, game.WINDOW_HEIGHT, "Olive Raylib")
     ray.SetTargetFPS(60)
   }
 }

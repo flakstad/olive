@@ -1,4 +1,4 @@
-# Hot Reload Raylib
+# Raylib
 
 This is a small Raylib game-shaped example using Olive hot reload. Production
 code is normal Odin: `main.odin` opens the window, owns the process lifetime,
@@ -14,22 +14,22 @@ From the Olive repo root:
 
 ```sh
 odin build cmd/olive -out:olive
-odin run examples/hot_reload_raylib
-./olive check examples/hot_reload_raylib/reload/reload.conf
-./olive run examples/hot_reload_raylib/reload/reload.conf
+odin run examples/raylib
+./olive check examples/raylib/reload/reload.conf
+./olive run examples/raylib/reload/reload.conf
 ```
 
-In another terminal, edit `examples/hot_reload_raylib/game.odin`, then build
+In another terminal, edit `examples/raylib/main.odin`, then build
 only the reloadable module:
 
 ```sh
-./olive build examples/hot_reload_raylib/reload/reload.conf
+./olive build examples/raylib/reload/reload.conf
 ```
 
 Or keep the build watcher running:
 
 ```sh
-./olive watch examples/hot_reload_raylib/reload/reload.conf
+./olive watch examples/raylib/reload/reload.conf
 ```
 
 The example keeps durable state in `Game_State`, composed from input, player,

@@ -3,6 +3,74 @@ package main
 import "core:math"
 import ray "vendor:raylib"
 
+WINDOW_WIDTH :: 960
+WINDOW_HEIGHT :: 540
+MAX_BULLETS :: 64
+MAX_DRONES :: 12
+
+Input_State :: struct {
+  move:         ray.Vector2,
+  fire_pressed: bool,
+  reset_pressed: bool,
+}
+
+Player_State :: struct {
+  position: ray.Vector2,
+  velocity: ray.Vector2,
+  speed:    f32,
+  size:     f32,
+}
+
+Bullet_State :: struct {
+  active:   bool,
+  position: ray.Vector2,
+  velocity: ray.Vector2,
+  ttl:      f32,
+}
+
+Drone_State :: struct {
+  active:   bool,
+  position: ray.Vector2,
+  velocity: ray.Vector2,
+  radius:   f32,
+}
+
+World_State :: struct {
+  frame:        int,
+  elapsed:      f32,
+  spawn_timer:  f32,
+  arena:        ray.Rectangle,
+  bullets:      [MAX_BULLETS]Bullet_State,
+  drones:       [MAX_DRONES]Drone_State,
+}
+
+Hud_State :: struct {
+  reloads: int,
+  resets:  int,
+  score:   int,
+  message: cstring,
+}
+
+Game_State :: struct {
+  input:  Input_State,
+  player: Player_State,
+  world:  World_State,
+  hud:    Hud_State,
+}
+
+main :: proc() {
+  ray.InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Olive Raylib")
+  defer ray.CloseWindow()
+  ray.SetTargetFPS(60)
+
+  state := Game_State{}
+  init(&state)
+
+  for !ray.WindowShouldClose() {
+    frame(&state)
+  }
+}
+
 init :: proc(state: ^Game_State) {
   state^ = {}
   state.player = Player_State{
@@ -188,7 +256,7 @@ draw :: proc(state: ^Game_State) {
   ray.DrawRectangleRec(player_rect, ray.Color{82, 170, 255, 255})
   ray.DrawRectangleLinesEx(player_rect, 2, ray.WHITE)
 
-  ray.DrawText("Olive Raylib Hot Reload", 32, 16, 24, ray.RAYWHITE)
+  ray.DrawText("Olive Raylib", 32, 16, 24, ray.RAYWHITE)
   ray.DrawText("WASD/arrows move   Space fires   R resets state   Esc exits", 32, WINDOW_HEIGHT - 36, 18, ray.LIGHTGRAY)
   ray.DrawText(ray.TextFormat("score %04d", state.hud.score), 720, 18, 22, ray.RAYWHITE)
   ray.DrawText(ray.TextFormat("reloads %d  resets %d", state.hud.reloads, state.hud.resets), 720, 44, 18, ray.LIGHTGRAY)

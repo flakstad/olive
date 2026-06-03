@@ -159,9 +159,9 @@ memory layout. When that happens, stop and restart `olive run`. Any
 
 The examples are the best way to see the reload pattern in context:
 
-- [`examples/hot_reload_raylib`](examples/hot_reload_raylib/README.md): a Raylib game loop.
-- [`examples/hot_reload_http_server`](examples/hot_reload_http_server/README.md): an idle-friendly local HTTP server.
-- [`examples/hot_reload_local_tool`](examples/hot_reload_local_tool/README.md): a long-running local worker with composed durable state.
+- [`examples/raylib`](examples/raylib/README.md): a Raylib game loop.
+- [`examples/http_server`](examples/http_server/README.md): an idle-friendly local HTTP server.
+- [`examples/local_tool`](examples/local_tool/README.md): a long-running local worker with composed durable state.
 
 ## Scratch Eval
 

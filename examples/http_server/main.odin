@@ -5,6 +5,37 @@ import "core:net"
 import "core:strings"
 import "core:time"
 
+SERVER_PORT :: 8099
+
+Route_Metrics :: struct {
+    home:    int,
+    status:  int,
+    missing: int,
+}
+
+Server_Metrics :: struct {
+    accepted: int,
+    reloads:  int,
+    unloads:  int,
+}
+
+Server_State :: struct {
+    listener:  net.TCP_Socket,
+    listening: bool,
+    routes:    Route_Metrics,
+    metrics:   Server_Metrics,
+}
+
+main :: proc() {
+    state := Server_State{}
+    init(&state)
+    defer shutdown(&state)
+
+    for state.listening {
+        serve_one(&state)
+    }
+}
+
 init :: proc(state: ^Server_State) {
     state^ = {}
     listener, err := net.listen_tcp({net.IP4_Loopback, SERVER_PORT}, 16)
