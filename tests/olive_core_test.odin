@@ -549,6 +549,35 @@ compiled_cli_reload_init_check_and_build :: proc(t: ^testing.T) {
     return
   }
   defer delete(app_dir)
+  testing.expect_value(t, os.make_directory_all(app_dir) == nil, true)
+  legacy_state_path, legacy_state_join_err := os.join_path({app_dir, "state.odin"}, context.allocator)
+  testing.expect_value(t, legacy_state_join_err == nil, true)
+  if legacy_state_join_err == nil {
+    defer delete(legacy_state_path)
+    legacy_state_source := `package main
+
+Program_State :: struct {
+    ticks: int,
+}
+`
+    testing.expect_value(t, os.write_entire_file_from_string(legacy_state_path, legacy_state_source) == nil, true)
+  }
+  legacy_game_path, legacy_game_join_err := os.join_path({app_dir, "game.odin"}, context.allocator)
+  testing.expect_value(t, legacy_game_join_err == nil, true)
+  if legacy_game_join_err == nil {
+    defer delete(legacy_game_path)
+    legacy_game_source := `package main
+
+init :: proc(state: ^Program_State) {
+    state.ticks = 0
+}
+
+tick :: proc(state: ^Program_State) {
+    state.ticks += 1
+}
+`
+    testing.expect_value(t, os.write_entire_file_from_string(legacy_game_path, legacy_game_source) == nil, true)
+  }
 
   init_result := exec([]string{binary, "init", app_dir})
   defer delete_exec_result(init_result)

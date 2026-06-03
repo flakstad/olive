@@ -209,6 +209,20 @@ write_file_or_exit :: proc(path, content: string) {
     }
 }
 
+remove_file_if_exact_content :: proc(path, expected_content: string) {
+    if !os.exists(path) {
+        return
+    }
+    data, read_err := os.read_entire_file_from_path(path, context.allocator)
+    if read_err != nil {
+        return
+    }
+    defer delete(data)
+    if string(data) == expected_content {
+        _ = os.remove(path)
+    }
+}
+
 relative_import_or_exit :: proc(from_dir, target_path: string) -> string {
     from_abs, from_err := os.get_absolute_path(from_dir, context.allocator)
     if from_err != nil {
@@ -860,6 +874,29 @@ reload_init_program :: proc(dir: string) {
     defer delete(runtime_config_path)
     root_import := relative_import_or_exit(reload_dir, dir)
     defer delete(root_import)
+
+    legacy_state_file := join_or_exit([]string{dir, "state.odin"})
+    defer delete(legacy_state_file)
+    legacy_game_file := join_or_exit([]string{dir, "game.odin"})
+    defer delete(legacy_game_file)
+    legacy_state_source := `package main
+
+Program_State :: struct {
+    ticks: int,
+}
+`
+    legacy_game_source := `package main
+
+init :: proc(state: ^Program_State) {
+    state.ticks = 0
+}
+
+tick :: proc(state: ^Program_State) {
+    state.ticks += 1
+}
+`
+    remove_file_if_exact_content(legacy_state_file, legacy_state_source)
+    remove_file_if_exact_content(legacy_game_file, legacy_game_source)
 
     main_source := `package main
 
