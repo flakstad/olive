@@ -321,7 +321,8 @@ durable state to demonstrate that pattern.
 
 State layout changes are still rejected. Because the generated host owns a
 typed `state := program.State{}` value, changing the state layout requires
-rebuilding and restarting the host.
+stopping and restarting `probe reload run`. Any `probe reload watch` process can
+stay running.
 
 ## Tests
 

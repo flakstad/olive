@@ -182,7 +182,7 @@ load_core :: proc(path: string, state: rawptr, state_size, state_align: int, gen
     layout_changed := core.state_size() != state_size || core.state_align() != state_align
     if layout_changed {
         unload_core(&core, nil)
-        return {}, {}, strings.clone("reload state layout changed; rebuild and restart the host"), false
+        return {}, {}, strings.clone("reload state layout changed; stop and restart `probe reload run`. Any `probe reload watch` process can stay running."), false
     }
 
     write_time, time_ok := library_write_time(path)

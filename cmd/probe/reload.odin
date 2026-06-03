@@ -147,7 +147,7 @@ read_reload_config :: proc(path: string) -> (Reload_Config, string, bool) {
         return cfg, strings.clone("config requires run=<proc>"), false
     }
     if cfg.layout_policy != "reject" {
-        return cfg, strings.clone("on_layout_change currently supports only reject; layout changes require rebuilding/restarting the host"), false
+        return cfg, strings.clone("on_layout_change currently supports only reject; state layout changes require restarting `probe reload run`; `probe reload watch` can stay running"), false
     }
     if cfg.watch_paths == "" {
         cfg.watch_paths = strings.clone(cfg.package_path)
@@ -954,7 +954,8 @@ on_load=on_load
 # host_init=host_init
 # host_shutdown=host_shutdown
 #
-# on_layout_change: currently only reject. State layout changes require rebuilding/restarting the host.
+# on_layout_change: currently only reject. State layout changes require restarting probe reload run.
+# Any probe reload watch process can stay running.
 on_layout_change=reject
 #
 # module_name: basename for generated host/module binaries.
