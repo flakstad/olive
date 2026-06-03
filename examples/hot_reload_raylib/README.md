@@ -6,7 +6,9 @@ and calls `frame(&state)` until Raylib says the window should close.
 
 The reload workflow is isolated to `reload/reload.odin`. Its `run` proc owns
 the development frame loop and calls `probe_reload.checkpoint(host)` once per
-frame after drawing.
+frame after drawing. Because the reload host does not execute production
+`main.odin`, the reload adapter also initializes the Raylib window in
+`on_load`.
 
 From the Probe repo root:
 

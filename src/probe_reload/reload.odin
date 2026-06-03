@@ -36,6 +36,7 @@ Run_Host :: struct {
     module_path: string,
     last_write:  time.Time,
     reload_requested: bool,
+    exit_requested: bool,
     error_message: string,
 }
 
@@ -324,8 +325,13 @@ json_event_handler :: proc(event: Reload_Event) {
 run_host_init :: proc(host: ^Run_Host, module_path: string) {
     host.module_path = module_path
     host.reload_requested = false
+    host.exit_requested = false
     host.error_message = ""
     host.last_write, _ = library_write_time(module_path)
+}
+
+request_exit :: proc(host: ^Run_Host) {
+    host.exit_requested = true
 }
 
 checkpoint :: proc(host: ^Run_Host) -> bool {
@@ -364,8 +370,12 @@ run_cooperative_host :: proc(
     run_host_init(&host, module_path)
     for {
         host.reload_requested = false
+        host.exit_requested = false
         host.error_message = ""
         run(app_symbols, state, &host)
+        if host.exit_requested {
+            return 0
+        }
         if host.error_message != "" {
             on_event(Reload_Event{kind = .Checkpoint_Error, generation = session.generation, message = host.error_message})
         }
