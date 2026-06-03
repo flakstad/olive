@@ -19,6 +19,24 @@ Build the CLI:
 odin build cmd/olive -out:olive
 ```
 
+## Quickstart
+
+```sh
+./olive init scratch
+cd scratch
+../olive run
+```
+
+In another terminal:
+
+```sh
+cd scratch
+../olive watch
+```
+
+Now edit the generated Odin files. Olive builds the changed code and reloads it
+into the running program without resetting its durable state.
+
 ## Hot Reload
 
 Olive is meant to make the normal edit-build-run cycle feel more like a live
@@ -128,6 +146,14 @@ different. Olive rejects that reload because the resident host owns the old
 memory layout. When that happens, stop and restart `olive run`. Any
 `olive watch` process can stay running; it will keep building the new module.
 
+## Examples
+
+The examples are the best way to see the reload pattern in context:
+
+- [`examples/hot_reload_raylib`](examples/hot_reload_raylib/README.md): a Raylib game loop.
+- [`examples/hot_reload_http_server`](examples/hot_reload_http_server/README.md): an idle-friendly local HTTP server.
+- [`examples/hot_reload_local_tool`](examples/hot_reload_local_tool/README.md): a long-running local worker with composed durable state.
+
 ## Scratch Eval
 
 Scratch eval is mostly intended for editor integrations. From Emacs, or another
@@ -152,14 +178,6 @@ You can also run eval from the CLI:
 ./olive eval /path/to/package 'target.some_proc()'
 ./olive eval /path/to/package 'target.some_proc()' --check
 ```
-
-## Examples
-
-The examples are the best way to see the reload pattern in context:
-
-- [`examples/hot_reload_raylib`](examples/hot_reload_raylib/README.md): a Raylib game loop.
-- [`examples/hot_reload_http_server`](examples/hot_reload_http_server/README.md): an idle-friendly local HTTP server.
-- [`examples/hot_reload_local_tool`](examples/hot_reload_local_tool/README.md): a long-running local worker with composed durable state.
 
 ## Emacs
 
