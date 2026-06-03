@@ -1,3 +1,4 @@
 .probe/
 /probe
 *.elc
+/.worktrees/
