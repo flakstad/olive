@@ -2,9 +2,13 @@ package tests
 
 import "core:fmt"
 import "core:os"
+import "core:sync"
 import "core:strings"
 import "core:testing"
 import probe "../src/probe_core"
+
+build_probe_binary_mutex: sync.Mutex
+exec_mutex: sync.Mutex
 
 Exec_Result :: struct {
   exit_code: int,
@@ -13,6 +17,9 @@ Exec_Result :: struct {
 }
 
 exec :: proc(command: []string, working_dir := "") -> Exec_Result {
+  sync.mutex_lock(&exec_mutex)
+  defer sync.mutex_unlock(&exec_mutex)
+
   state, stdout, stderr, err := os.process_exec(
     os.Process_Desc{command = command, working_dir = working_dir},
     context.allocator,
@@ -170,6 +177,9 @@ sample_test :: proc(t: ^testing.T) {
 }
 
 build_probe_binary :: proc(t: ^testing.T, root: string) -> (binary: string, ok: bool) {
+  sync.mutex_lock(&build_probe_binary_mutex)
+  defer sync.mutex_unlock(&build_probe_binary_mutex)
+
   binary_path, join_err := os.join_path({root, "probe"}, context.allocator)
   testing.expect_value(t, join_err == nil, true)
   if join_err != nil {
@@ -179,6 +189,9 @@ build_probe_binary :: proc(t: ^testing.T, root: string) -> (binary: string, ok: 
   defer delete(out_arg)
   result := exec([]string{"odin", "build", "cmd/probe", out_arg})
   defer delete_exec_result(result)
+  if result.exit_code != 0 {
+    fmt.eprintln(result.stderr)
+  }
   testing.expect_value(t, result.exit_code, 0)
   if result.exit_code != 0 {
     delete(binary_path)
@@ -244,6 +257,31 @@ render_no_print_runner :: proc(t: ^testing.T) {
   defer delete(output)
   testing.expect_value(t, strings.contains(output, "    target.run()"), true)
   testing.expect_value(t, strings.contains(output, "fmt.println(result)"), false)
+}
+
+@(test)
+remap_external_runner_diagnostic_to_probe_expr_line :: proc(t: ^testing.T) {
+  stderr := "/tmp/probe-1/main.odin(7:15) Error: Unknown identifier: nope\n"
+  output := probe.remap_runner_output_locations(stderr, "/tmp/probe-1/main.odin", "nope()", true, false, 0)
+  defer delete(output)
+  testing.expect_value(t, output, "<probe>:1:15 Error: Unknown identifier: nope\n")
+}
+
+@(test)
+remap_internal_runner_diagnostic_to_probe_multiline_source_line :: proc(t: ^testing.T) {
+  stderr := "/tmp/probe-1/probe_runner.odin(7:18) Error: Unknown identifier: nope\n"
+  code := "x := 1\n\nnope(x)"
+  output := probe.remap_runner_output_locations(stderr, "/tmp/probe-1/probe_runner.odin", code, true, true, 0)
+  defer delete(output)
+  testing.expect_value(t, output, "<probe>:3:18 Error: Unknown identifier: nope\n")
+}
+
+@(test)
+remap_leaves_non_snippet_diagnostics_alone :: proc(t: ^testing.T) {
+  stderr := "/tmp/probe-1/app.odin(3:1) Error: package error\n"
+  output := probe.remap_runner_output_locations(stderr, "/tmp/probe-1/probe_runner.odin", "nope()", true, true, 0)
+  defer delete(output)
+  testing.expect_value(t, output, stderr)
 }
 
 @(test)
@@ -316,20 +354,20 @@ compiled_cli_external_and_internal_probe :: proc(t: ^testing.T) {
     return
   }
   defer delete(sample_pkg)
-  external_result := exec([]string{binary, "run", sample_pkg, "target.add(5, 7)"})
+  external_result := exec([]string{binary, "eval", sample_pkg, "target.add(5, 7)"})
   defer delete_exec_result(external_result)
   testing.expect_value(t, external_result.exit_code, 0)
   testing.expect_value(t, strings.trim_space(external_result.stdout), "12")
-  check_result := exec([]string{binary, "check", sample_pkg, "target.answer()"})
+  check_result := exec([]string{binary, "eval", sample_pkg, "target.answer()", "--check"})
   defer delete_exec_result(check_result)
   testing.expect_value(t, check_result.exit_code, 0)
-  no_print_result := exec([]string{binary, "run", sample_pkg, "target.say()", "--no-print"})
+  no_print_result := exec([]string{binary, "eval", sample_pkg, "target.say()", "--no-print"})
   defer delete_exec_result(no_print_result)
   testing.expect_value(t, no_print_result.exit_code, 0)
   testing.expect_value(t, strings.trim_space(no_print_result.stdout), "said")
   cwd_result := exec([]string{
     binary,
-    "run",
+    "eval",
     sample_pkg,
     `_ = os.write_entire_file_from_string("probe-cwd.txt", "ok")`,
     "--no-print",
@@ -354,7 +392,7 @@ compiled_cli_external_and_internal_probe :: proc(t: ^testing.T) {
     return
   }
   defer delete(main_pkg)
-  internal_result := exec([]string{binary, "run", main_pkg, "add(5, 2)", "--internal"})
+  internal_result := exec([]string{binary, "eval", main_pkg, "add(5, 2)", "--internal"})
   defer delete_exec_result(internal_result)
   testing.expect_value(t, internal_result.exit_code, 0)
   testing.expect_value(t, strings.trim_space(internal_result.stdout), "7")
@@ -387,7 +425,7 @@ compiled_cli_internal_probe_comments_top_level_scratch :: proc(t: ^testing.T) {
     return
   }
   defer delete(keep_dir)
-  result := exec([]string{binary, "run", pkg, "add(5, 2)", "--internal", "--keep-dir", keep_dir})
+  result := exec([]string{binary, "eval", pkg, "add(5, 2)", "--internal", "--keep-dir", keep_dir})
   defer delete_exec_result(result)
   testing.expect_value(t, result.exit_code, 0)
   testing.expect_value(t, strings.trim_space(result.stdout), "7")
@@ -433,7 +471,7 @@ compiled_cli_runs_and_writes_generated_source :: proc(t: ^testing.T) {
     return
   }
   defer delete(generated_path)
-  result := exec([]string{binary, "run", pkg, "target.answer()", "--generated", generated_path})
+  result := exec([]string{binary, "eval", pkg, "target.answer()", "--generated", generated_path})
   defer delete_exec_result(result)
   testing.expect_value(t, result.exit_code, 0)
   testing.expect_value(t, strings.trim_space(result.stdout), "42")
@@ -444,8 +482,12 @@ compiled_cli_runs_and_writes_generated_source :: proc(t: ^testing.T) {
     testing.expect_value(t, strings.contains(string(generated), "import target"), true)
     testing.expect_value(t, strings.contains(string(generated), "result := target.answer()"), true)
   }
-  show_result := exec([]string{binary, "run", pkg, "target.answer()", "--show"})
+  show_result := exec([]string{binary, "eval", pkg, "target.answer()", "--show"})
   defer delete_exec_result(show_result)
+  if show_result.exit_code != 0 {
+    fmt.eprintln(show_result.stderr)
+    fmt.eprintln(show_result.stdout)
+  }
   testing.expect_value(t, show_result.exit_code, 0)
   testing.expect_value(t, strings.contains(show_result.stdout, "import target"), true)
   testing.expect_value(t, strings.has_suffix(strings.trim_space(show_result.stdout), "42"), true)
@@ -473,7 +515,7 @@ compiled_cli_relative_keep_dir_runs_from_package_cwd :: proc(t: ^testing.T) {
   }
   defer delete(pkg)
   keep_dir := "relative-probe-runner"
-  result := exec([]string{binary, "run", pkg, "target.answer()", "--keep-dir", keep_dir}, root)
+  result := exec([]string{binary, "eval", pkg, "target.answer()", "--keep-dir", keep_dir}, root)
   defer delete_exec_result(result)
   testing.expect_value(t, result.exit_code, 0)
   testing.expect_value(t, strings.trim_space(result.stdout), "42")
@@ -506,7 +548,7 @@ compiled_cli_package_test :: proc(t: ^testing.T) {
     return
   }
   defer delete(pkg)
-  result := exec([]string{binary, "package-test", pkg, "-define:ODIN_TEST_LOG_LEVEL=warning"})
+  result := exec([]string{binary, "test", pkg, "-define:ODIN_TEST_LOG_LEVEL=warning"})
   defer delete_exec_result(result)
   testing.expect_value(t, result.exit_code, 0)
 }
@@ -532,10 +574,167 @@ compiled_cli_package_run_invokes_standard_main :: proc(t: ^testing.T) {
     return
   }
   defer delete(pkg)
-  result := exec([]string{binary, "package-run", pkg})
+  result := exec([]string{binary, "run", pkg})
   defer delete_exec_result(result)
   testing.expect_value(t, result.exit_code, 0)
   testing.expect_value(t, strings.trim_space(result.stdout), "3")
+}
+
+@(test)
+compiled_cli_reload_init_build_and_rebuild :: proc(t: ^testing.T) {
+  root, dir_err := os.make_directory_temp("", "probe-cli-reload-test-*", context.allocator)
+  testing.expect_value(t, dir_err == nil, true)
+  if dir_err != nil {
+    return
+  }
+  defer {
+    _ = os.remove_all(root)
+    delete(root)
+  }
+  binary, binary_ok := build_probe_binary(t, root)
+  if !binary_ok {
+    return
+  }
+  defer delete(binary)
+  app_dir, app_join_err := os.join_path({root, "reload-app"}, context.allocator)
+  testing.expect_value(t, app_join_err == nil, true)
+  if app_join_err != nil {
+    return
+  }
+  defer delete(app_dir)
+
+  init_result := exec([]string{binary, "reload", "init", app_dir})
+  defer delete_exec_result(init_result)
+  testing.expect_value(t, init_result.exit_code, 0)
+
+  config_path, config_join_err := os.join_path({app_dir, "reload", "reload.conf"}, context.allocator)
+  testing.expect_value(t, config_join_err == nil, true)
+  if config_join_err != nil {
+    return
+  }
+  defer delete(config_path)
+  testing.expect_value(t, os.exists(config_path), true)
+
+  check_result := exec([]string{binary, "reload", "check", config_path})
+  defer delete_exec_result(check_result)
+  testing.expect_value(t, check_result.exit_code, 0)
+  testing.expect_value(t, strings.contains(check_result.stdout, "config ok"), true)
+
+  paths_result := exec([]string{binary, "reload", "paths", config_path})
+  defer delete_exec_result(paths_result)
+  testing.expect_value(t, paths_result.exit_code, 0)
+  testing.expect_value(t, strings.contains(paths_result.stdout, "module_binary:"), true)
+  testing.expect_value(t, strings.contains(paths_result.stdout, "package:"), true)
+  testing.expect_value(t, strings.contains(paths_result.stdout, "watch:"), true)
+  testing.expect_value(t, strings.contains(paths_result.stdout, "watch_debounce_ms:"), true)
+  testing.expect_value(t, strings.contains(paths_result.stdout, "watch_command:"), true)
+
+  json_paths_result := exec([]string{binary, "reload", "paths", config_path, "--json"})
+  defer delete_exec_result(json_paths_result)
+  testing.expect_value(t, json_paths_result.exit_code, 0)
+  testing.expect_value(t, strings.contains(json_paths_result.stdout, `"module_binary"`), true)
+  testing.expect_value(t, strings.contains(json_paths_result.stdout, `"package"`), true)
+  testing.expect_value(t, strings.contains(json_paths_result.stdout, `"watch"`), true)
+  testing.expect_value(t, strings.contains(json_paths_result.stdout, `"watch_debounce_ms"`), true)
+  testing.expect_value(t, strings.contains(json_paths_result.stdout, `"watch_command"`), true)
+
+  build_result := exec([]string{binary, "reload", "build", config_path})
+  defer delete_exec_result(build_result)
+  testing.expect_value(t, build_result.exit_code, 0)
+
+  rebuild_result := exec([]string{binary, "reload", "rebuild", config_path})
+  defer delete_exec_result(rebuild_result)
+  testing.expect_value(t, rebuild_result.exit_code, 0)
+
+  bad_run_config_path, bad_run_config_join_err := os.join_path({app_dir, "bad-run.reload.conf"}, context.allocator)
+  testing.expect_value(t, bad_run_config_join_err == nil, true)
+  if bad_run_config_join_err == nil {
+    defer delete(bad_run_config_path)
+    cwd, cwd_err := os.get_working_directory(context.allocator)
+    testing.expect_value(t, cwd_err == nil, true)
+    if cwd_err != nil {
+      return
+    }
+    defer delete(cwd)
+    runtime_path, runtime_join_err := os.join_path({cwd, "src", "probe_reload"}, context.allocator)
+    testing.expect_value(t, runtime_join_err == nil, true)
+    if runtime_join_err != nil {
+      return
+    }
+    defer delete(runtime_path)
+    bad_run_config := fmt.tprintf(`package=reload
+runtime=%s
+state=Program_State
+run=missing_run
+watch=reload
+generated_dir=.probe/bad-run/generated
+build_dir=.probe/bad-run/build
+`, runtime_path)
+    testing.expect_value(t, os.write_entire_file_from_string(bad_run_config_path, bad_run_config) == nil, true)
+    bad_run_result := exec([]string{binary, "reload", "check", bad_run_config_path})
+    defer delete_exec_result(bad_run_result)
+    testing.expect_value(t, bad_run_result.exit_code, 1)
+    testing.expect_value(t, strings.contains(bad_run_result.stdout, "checking generated reload module"), true)
+    testing.expect_value(t, strings.contains(bad_run_result.stderr, "missing_run"), true)
+  }
+
+  bad_config_path, bad_config_join_err := os.join_path({app_dir, "bad.reload.conf"}, context.allocator)
+  testing.expect_value(t, bad_config_join_err == nil, true)
+  if bad_config_join_err == nil {
+    defer delete(bad_config_path)
+bad_config := `package=missing-package
+runtime=missing-runtime
+state=Program_State
+run=run
+`
+    testing.expect_value(t, os.write_entire_file_from_string(bad_config_path, bad_config) == nil, true)
+    bad_check_result := exec([]string{binary, "reload", "check", bad_config_path})
+    defer delete_exec_result(bad_check_result)
+    testing.expect_value(t, bad_check_result.exit_code, 1)
+    testing.expect_value(t, strings.contains(bad_check_result.stderr, "package path is not a directory"), true)
+    testing.expect_value(t, strings.contains(bad_check_result.stderr, "runtime path is not a directory"), true)
+  }
+
+  bad_debounce_config_path, bad_debounce_join_err := os.join_path({app_dir, "bad-debounce.reload.conf"}, context.allocator)
+  testing.expect_value(t, bad_debounce_join_err == nil, true)
+  if bad_debounce_join_err == nil {
+    defer delete(bad_debounce_config_path)
+    cwd, cwd_err := os.get_working_directory(context.allocator)
+    testing.expect_value(t, cwd_err == nil, true)
+    if cwd_err != nil {
+      return
+    }
+    defer delete(cwd)
+    runtime_path, runtime_join_err := os.join_path({cwd, "src", "probe_reload"}, context.allocator)
+    testing.expect_value(t, runtime_join_err == nil, true)
+    if runtime_join_err != nil {
+      return
+    }
+    defer delete(runtime_path)
+    bad_debounce_config := fmt.tprintf(`package=reload
+runtime=%s
+state=Program_State
+run=run
+watch=reload
+watch_debounce_ms=nope
+`, runtime_path)
+    testing.expect_value(t, os.write_entire_file_from_string(bad_debounce_config_path, bad_debounce_config) == nil, true)
+    bad_debounce_result := exec([]string{binary, "reload", "check", bad_debounce_config_path})
+    defer delete_exec_result(bad_debounce_result)
+    testing.expect_value(t, bad_debounce_result.exit_code, 1)
+    testing.expect_value(t, strings.contains(bad_debounce_result.stderr, "watch_debounce_ms must be an integer"), true)
+  }
+
+  clean_result := exec([]string{binary, "reload", "clean", config_path})
+  defer delete_exec_result(clean_result)
+  testing.expect_value(t, clean_result.exit_code, 0)
+
+  generated_dir, generated_join_err := os.join_path({app_dir, ".probe", "reload", "generated"}, context.allocator)
+  testing.expect_value(t, generated_join_err == nil, true)
+  if generated_join_err == nil {
+    defer delete(generated_dir)
+    testing.expect_value(t, os.exists(generated_dir), false)
+  }
 }
 
 @(test)
@@ -559,7 +758,7 @@ compiled_cli_store_commands_round_trip :: proc(t: ^testing.T) {
     return
   }
   defer delete(pkg)
-  run_result := exec([]string{binary, "run", pkg, "target.add(20, 22)", "--save", "answer"})
+  run_result := exec([]string{binary, "eval", pkg, "target.add(20, 22)", "--save", "answer"})
   defer delete_exec_result(run_result)
   testing.expect_value(t, run_result.exit_code, 0)
   testing.expect_value(t, strings.trim_space(run_result.stdout), "42")

@@ -4,6 +4,7 @@
 ;; results in Emacs buffers, and leaves Odin semantics to Odin itself.
 
 (require 'compile)
+(require 'json)
 (require 'seq)
 (require 'subr-x)
 
@@ -38,6 +39,11 @@
   :type 'string
   :group 'probe)
 
+(defcustom probe-reload-buffer-name "*Probe Reload*"
+  "Buffer name prefix used for live hot-reload command output."
+  :type 'string
+  :group 'probe)
+
 (defcustom probe-show-generated nil
   "When non-nil, request and display generated Odin before command output."
   :type 'boolean
@@ -49,15 +55,15 @@
   :group 'probe)
 
 (defcustom probe-test-after-build nil
-  "When non-nil, run `odin test .' after a successful package build."
+  "When non-nil, run `probe test .' after a successful package build."
   :type 'boolean
   :group 'probe)
 
-(defcustom probe-test-command "odin test . -define:ODIN_TEST_LOG_LEVEL=warning"
-  "Odin command used by probe test commands.
+(defcustom probe-test-args '("-define:ODIN_TEST_LOG_LEVEL=warning")
+  "Extra args passed to `probe test .' by probe test commands.
 The default suppresses the verbose successful test-runner info logs while still
 showing warnings, errors, and the final test summary."
-  :type 'string
+  :type '(repeat string)
   :group 'probe)
 
 (defvar probe--last-source-buffer nil)
@@ -122,7 +128,8 @@ For Odin this is usually the directory containing the current file."
 (defun probe--cli-args (command package code &optional no-print show internal save generated)
   "Return probe CLI args for COMMAND, PACKAGE, and CODE."
   (append
-   (list command package code)
+   (list "eval" package code)
+   (when (string= command "check") (list "--check"))
    (when no-print (list "--no-print"))
    (when show (list "--show"))
    (when internal (list "--internal"))
@@ -773,6 +780,177 @@ With prefix argument NO-PRINT, treat the code as statements."
       (visual-line-mode 1))
     buffer))
 
+(defun probe--reload-buffer-name (subcommand)
+  "Return the live reload buffer name for SUBCOMMAND."
+  (format "%s %s*"
+          (string-remove-suffix "*" probe-reload-buffer-name)
+          (if (string= subcommand "watch") "Watch" "Run")))
+
+(defun probe--reload-process-name (subcommand)
+  "Return the live reload process name for SUBCOMMAND."
+  (format "probe-reload-%s" subcommand))
+
+(defun probe--reload-buffer (directory subcommand)
+  "Return the live reload output buffer for DIRECTORY and SUBCOMMAND."
+  (let ((buffer (get-buffer-create (probe--reload-buffer-name subcommand))))
+    (when-let ((process (get-buffer-process buffer)))
+      (when (process-live-p process)
+        (delete-process process)))
+    (with-current-buffer buffer
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert (format "$ cd %s\n" (abbreviate-file-name directory))))
+      (special-mode)
+      (setq-local truncate-lines nil)
+      (setq-local word-wrap t)
+      (setq-local probe-reload-last-event nil)
+      (visual-line-mode 1))
+    buffer))
+
+(defun probe--default-reload-config ()
+  "Return a likely reload config path for the current buffer."
+  (let* ((project (probe-project-directory))
+         (package (probe-package-directory))
+         (file (and buffer-file-name (expand-file-name buffer-file-name)))
+         (candidates (delq nil
+                           (list
+                            (and file
+                                 (string= (file-name-nondirectory file) "reload.conf")
+                                 file)
+                            (expand-file-name "reload.conf" package)
+                            (expand-file-name "reload/reload.conf" package)
+                            (expand-file-name "reload/reload.conf" project)))))
+    (or (seq-find #'file-exists-p candidates)
+        (expand-file-name "reload/reload.conf" project))))
+
+(defun probe--read-reload-config ()
+  "Read a reload config path, defaulting to `reload/reload.conf' when present."
+  (let* ((default (probe--default-reload-config))
+         (dir (file-name-directory default))
+         (name (file-name-nondirectory default)))
+    (read-file-name "Reload config: " dir default t name)))
+
+(defun probe--reload-event-value (event key)
+  "Return KEY from parsed reload EVENT."
+  (cond
+   ((hash-table-p event) (gethash key event))
+   ((listp event) (alist-get key event nil nil #'string=))))
+
+(defun probe--format-reload-event (event)
+  "Return a human-readable string for parsed reload EVENT."
+  (let* ((kind (or (probe--reload-event-value event "kind") "unknown"))
+         (generation (probe--reload-event-value event "generation"))
+         (message (or (probe--reload-event-value event "message") ""))
+         (base (if generation
+                   (format "[reload] %s generation=%s" kind generation)
+                 (format "[reload] %s" kind))))
+    (if (string-empty-p message)
+        base
+      (format "%s: %s" base message))))
+
+(defun probe--handle-reload-event-line (buffer line)
+  "Handle one structured reload event LINE in BUFFER.
+Return non-nil when LINE was a structured event."
+  (when (string-prefix-p "PROBE_RELOAD_EVENT\t" line)
+    (let* ((payload (substring line (length "PROBE_RELOAD_EVENT\t")))
+           (event (ignore-errors
+                    (json-parse-string payload :object-type 'hash-table)))
+           (formatted (if event
+                          (probe--format-reload-event event)
+                        (format "[reload] malformed event: %s" payload))))
+      (with-current-buffer buffer
+        (setq-local probe-reload-last-event event)
+        (let ((inhibit-read-only t))
+          (goto-char (point-max))
+          (insert formatted "\n")))
+      (message "%s" formatted)
+      t)))
+
+(defun probe--reload-process-filter (process chunk)
+  "Insert reload PROCESS output CHUNK, parsing structured event lines."
+  (let* ((buffer (process-buffer process))
+         (pending (concat (or (process-get process 'probe-reload-pending) "") chunk))
+         (lines (split-string pending "\n"))
+         (tail (if (string-suffix-p "\n" pending) "" (car (last lines))))
+         (complete-lines (butlast lines)))
+    (process-put process 'probe-reload-pending tail)
+    (dolist (line complete-lines)
+      (unless (and (process-get process 'probe-reload-json)
+                   (probe--handle-reload-event-line buffer line))
+        (with-current-buffer buffer
+          (let ((inhibit-read-only t))
+            (goto-char (point-max))
+            (insert line "\n")))))))
+
+(defun probe--flush-reload-process-tail (process)
+  "Flush any pending partial output line for reload PROCESS."
+  (let ((tail (process-get process 'probe-reload-pending)))
+    (when (and tail (not (string-empty-p tail)))
+      (process-put process 'probe-reload-pending "")
+      (probe--reload-process-filter process "\n"))))
+
+(defun probe--run-reload-command (directory config &optional json subcommand)
+  "Run `probe reload SUBCOMMAND CONFIG' in DIRECTORY.
+SUBCOMMAND defaults to `run'. When JSON is non-nil, pass `--json' and parse
+structured reload events."
+  (let* ((directory (file-name-as-directory (expand-file-name directory)))
+         (config (expand-file-name config))
+         (subcommand (or subcommand "run"))
+         (buffer (probe--reload-buffer directory subcommand))
+         (stderr-buffer (generate-new-buffer " *probe-reload-stderr*"))
+         (compiled (probe--compiled-command-or-error))
+         (args (append (list "reload" subcommand config)
+                       (when json (list "--json")))))
+    (with-current-buffer buffer
+      (let ((inhibit-read-only t))
+        (goto-char (point-max))
+        (insert (format "$ probe reload %s %s%s\n\n"
+                        subcommand
+                        config
+                        (if json " --json" "")))))
+    (let ((default-directory directory))
+      (display-buffer buffer)
+      (let ((process
+             (make-process
+              :name (probe--reload-process-name subcommand)
+              :buffer buffer
+              :stderr stderr-buffer
+              :command (cons compiled args)
+              :connection-type 'pipe
+              :filter #'probe--reload-process-filter
+              :noquery t
+              :sentinel
+              (lambda (process _event)
+                (when (memq (process-status process) '(exit signal))
+                  (probe--flush-reload-process-tail process)
+                  (let ((exit-code (process-exit-status process))
+                        (stderr (with-current-buffer stderr-buffer
+                                  (buffer-substring-no-properties (point-min) (point-max)))))
+                    (when (buffer-live-p stderr-buffer) (kill-buffer stderr-buffer))
+                    (with-current-buffer buffer
+                      (let ((inhibit-read-only t))
+                        (goto-char (point-max))
+                        (unless (string-empty-p stderr)
+                          (insert stderr)
+                          (unless (string-suffix-p "\n" stderr) (insert "\n")))
+                        (insert (format "\n$ probe reload exited %s\n" exit-code))))
+                    (unless (zerop exit-code)
+                      (display-buffer buffer))
+                    (message "probe reload exited %s" exit-code)))))))
+        (process-put process 'probe-reload-json json)
+        process))))
+
+(defun probe--stop-reload-command (subcommand)
+  "Stop live reload SUBCOMMAND process if it is running."
+  (let* ((buffer-name (probe--reload-buffer-name subcommand))
+         (buffer (get-buffer buffer-name))
+         (process (and buffer (get-buffer-process buffer))))
+    (if (and process (process-live-p process))
+        (progn
+          (delete-process process)
+          (message "stopped probe reload %s" subcommand))
+      (message "no probe reload %s process running" subcommand))))
+
 (defun probe--compact-command-output (stdout stderr)
   "Return compact one-line command output from STDOUT and STDERR."
   (let ((output (string-trim
@@ -783,24 +961,25 @@ With prefix argument NO-PRINT, treat the code as statements."
                          stderr))))
     (replace-regexp-in-string "[\n\r\t ]+" " " output)))
 
-(defun probe--run-odin-command (directory command &optional on-success show-output-on-success)
-  "Run Odin COMMAND in DIRECTORY.
+(defun probe--run-probe-command (directory args label &optional on-success show-output-on-success)
+  "Run compiled probe with ARGS in DIRECTORY.
 Show `probe-result-buffer-name' only on failure. Run ON-SUCCESS on exit 0.
 When SHOW-OUTPUT-ON-SUCCESS is non-nil, show command output in the minibuffer."
   (let* ((directory (file-name-as-directory (expand-file-name directory)))
          (buffer (probe--command-buffer directory))
          (stdout-buffer (generate-new-buffer " *probe-command-stdout*"))
-         (stderr-buffer (generate-new-buffer " *probe-command-stderr*")))
+         (stderr-buffer (generate-new-buffer " *probe-command-stderr*"))
+         (compiled (probe--compiled-command-or-error)))
     (with-current-buffer buffer
       (let ((inhibit-read-only t))
         (goto-char (point-max))
-        (insert (format "$ %s\n\n" command))))
+        (insert (format "$ probe %s\n\n" label))))
     (let ((default-directory directory))
       (make-process
        :name "probe-command"
        :buffer stdout-buffer
        :stderr stderr-buffer
-       :command (list shell-file-name shell-command-switch command)
+       :command (cons compiled args)
        :connection-type 'pipe
        :noquery t
        :sentinel
@@ -829,73 +1008,180 @@ When SHOW-OUTPUT-ON-SUCCESS is non-nil, show command output in the minibuffer."
                               (if (and show-output-on-success
                                        (not (string-empty-p compact-output)))
                                   compact-output
-                                (format "%s: ok" command))))
+                                (format "probe %s: ok" label))))
                    (when on-success (funcall on-success)))
                (display-buffer buffer)
-               (message "%s: failed" command)))))))))
+               (message "probe %s: failed" label)))))))))
 
-(defun probe--odin-in-package (command &optional on-success show-output-on-success)
-  "Run Odin COMMAND in the current package directory."
-  (probe--run-odin-command (probe-package-directory) command on-success show-output-on-success))
+(defun probe--command-in-package (args label &optional on-success show-output-on-success)
+  "Run probe ARGS in the current package directory."
+  (probe--run-probe-command (probe-package-directory) args label on-success show-output-on-success))
 
-(defun probe--odin-in-project (command &optional on-success show-output-on-success)
-  "Run Odin COMMAND in the current project directory."
-  (probe--run-odin-command (probe-project-directory) command on-success show-output-on-success))
+(defun probe--command-in-project (args label &optional on-success show-output-on-success)
+  "Run probe ARGS in the current project directory."
+  (probe--run-probe-command (probe-project-directory) args label on-success show-output-on-success))
 
 ;;;###autoload
 (defun probe-run-package ()
-  "Run `odin run .' in the current Odin package directory."
+  "Run `probe run .' in the current Odin package directory."
   (interactive)
-  (probe--odin-in-package "odin run ."))
+  (probe--command-in-package (list "run" ".") "run ."))
 
 ;;;###autoload
 (defun probe-build-package ()
-  "Run `odin build .' in the current Odin package directory."
+  "Run `probe build .' in the current Odin package directory."
   (interactive)
-  (probe--odin-in-package
-   "odin build ."
+  (probe--command-in-package
+   (list "build" ".")
+   "build ."
    (when probe-test-after-build
      (lambda () (probe-test-package)))))
 
 ;;;###autoload
 (defun probe-check-package ()
-  "Run `odin check .' in the current Odin package directory."
+  "Run `probe check .' in the current Odin package directory."
   (interactive)
-  (probe--odin-in-package "odin check ."))
+  (probe--command-in-package (list "check" ".") "check ."))
 
 ;;;###autoload
 (defun probe-test-package ()
-  "Run `odin test .' in the current Odin package directory."
+  "Run `probe test .' in the current Odin package directory."
   (interactive)
-  (probe--odin-in-package probe-test-command nil t))
+  (probe--command-in-package
+   (append (list "test" ".") probe-test-args)
+   (string-join (append (list "test" ".") probe-test-args) " ")
+   nil
+   t))
 
 ;;;###autoload
 (defun probe-run-project ()
-  "Run `odin run .' in the current Odin project directory."
+  "Run `probe run .' in the current Odin project directory."
   (interactive)
-  (probe--odin-in-project "odin run ."))
+  (probe--command-in-project (list "run" ".") "run ."))
 
 ;;;###autoload
 (defun probe-build-project ()
-  "Run `odin build .' in the current Odin project directory."
+  "Run `probe build .' in the current Odin project directory."
   (interactive)
-  (probe--odin-in-project "odin build ."))
+  (probe--command-in-project (list "build" ".") "build ."))
 
 ;;;###autoload
 (defun probe-check-project ()
-  "Run `odin check .' in the current Odin project directory."
+  "Run `probe check .' in the current Odin project directory."
   (interactive)
-  (probe--odin-in-project "odin check ."))
+  (probe--command-in-project (list "check" ".") "check ."))
 
 ;;;###autoload
 (defun probe-test-project ()
-  "Run `odin test .' in the current Odin project directory."
+  "Run `probe test .' in the current Odin project directory."
   (interactive)
-  (probe--odin-in-project probe-test-command nil t))
+  (probe--command-in-project
+   (append (list "test" ".") probe-test-args)
+   (string-join (append (list "test" ".") probe-test-args) " ")
+   nil
+   t))
+
+;;;###autoload
+(defun probe-reload-init (directory)
+  "Create a generic `probe reload' starter in DIRECTORY."
+  (interactive "GReload starter directory: ")
+  (probe--command-in-project
+   (list "reload" "init" (expand-file-name directory))
+   (format "reload init %s" directory)))
+
+;;;###autoload
+(defun probe-reload-generate (config)
+  "Generate hot-reload host/module wrappers from CONFIG."
+  (interactive (list (probe--read-reload-config)))
+  (probe--command-in-project
+   (list "reload" "generate" (expand-file-name config))
+   (format "reload generate %s" config)
+   nil
+   t))
+
+;;;###autoload
+(defun probe-reload-check (config)
+  "Check hot-reload CONFIG without building."
+  (interactive (list (probe--read-reload-config)))
+  (probe--command-in-project
+   (list "reload" "check" (expand-file-name config))
+   (format "reload check %s" config)
+   nil
+   t))
+
+;;;###autoload
+(defun probe-reload-build (config)
+  "Build hot-reload host and module from CONFIG."
+  (interactive (list (probe--read-reload-config)))
+  (probe--command-in-project
+   (list "reload" "build" (expand-file-name config))
+   (format "reload build %s" config)
+   nil
+   t))
+
+;;;###autoload
+(defun probe-reload-run (config)
+  "Build and run hot-reload host from CONFIG."
+  (interactive (list (probe--read-reload-config)))
+  (probe--run-reload-command (probe-project-directory) config))
+
+;;;###autoload
+(defun probe-reload-run-json (config)
+  "Build and run hot-reload host from CONFIG with structured events."
+  (interactive (list (probe--read-reload-config)))
+  (probe--run-reload-command (probe-project-directory) config t))
+
+;;;###autoload
+(defun probe-reload-rebuild (config)
+  "Rebuild only the hot-reload module from CONFIG."
+  (interactive (list (probe--read-reload-config)))
+  (probe--command-in-project
+   (list "reload" "rebuild" (expand-file-name config))
+   (format "reload rebuild %s" config)
+   nil
+   t))
+
+;;;###autoload
+(defun probe-reload-watch (config)
+  "Watch CONFIG's reload paths and rebuild the hot-reload module on changes."
+  (interactive (list (probe--read-reload-config)))
+  (probe--run-reload-command (probe-project-directory) config nil "watch"))
+
+;;;###autoload
+(defun probe-reload-paths (config)
+  "Show hot-reload generated paths for CONFIG."
+  (interactive (list (probe--read-reload-config)))
+  (probe--command-in-project
+   (list "reload" "paths" (expand-file-name config))
+   (format "reload paths %s" config)
+   nil
+   t))
+
+;;;###autoload
+(defun probe-reload-clean (config)
+  "Remove hot-reload generated files and build outputs for CONFIG."
+  (interactive (list (probe--read-reload-config)))
+  (probe--command-in-project
+   (list "reload" "clean" (expand-file-name config))
+   (format "reload clean %s" config)
+   nil
+   t))
+
+;;;###autoload
+(defun probe-reload-stop-run ()
+  "Stop the live `probe reload run' process."
+  (interactive)
+  (probe--stop-reload-command "run"))
+
+;;;###autoload
+(defun probe-reload-stop-watch ()
+  "Stop the live `probe reload watch' process."
+  (interactive)
+  (probe--stop-reload-command "watch"))
 
 ;;;###autoload
 (defun probe-toggle-test-after-build ()
-  "Toggle running `odin test .' after successful package builds."
+  "Toggle running `probe test .' after successful package builds."
   (interactive)
   (setq probe-test-after-build (not probe-test-after-build))
   (message "probe-test-after-build: %s" probe-test-after-build))
@@ -952,6 +1238,12 @@ When SHOW-OUTPUT-ON-SUCCESS is non-nil, show command output in the minibuffer."
   (local-set-key (kbd "C-c C-v") #'probe-check-package)
   (local-set-key (kbd "C-c C-t") #'probe-test-package)
   (local-set-key (kbd "C-c C-s") #'probe-toggle-show-generated)
+  (local-set-key (kbd "C-c C-l c") #'probe-reload-check)
+  (local-set-key (kbd "C-c C-l r") #'probe-reload-run-json)
+  (local-set-key (kbd "C-c C-l w") #'probe-reload-watch)
+  (local-set-key (kbd "C-c C-l b") #'probe-reload-rebuild)
+  (local-set-key (kbd "C-c C-l k") #'probe-reload-stop-run)
+  (local-set-key (kbd "C-c C-l K") #'probe-reload-stop-watch)
   (local-set-key (kbd "C-c C-z") #'probe-switch-to-result))
 
 (provide 'probe)

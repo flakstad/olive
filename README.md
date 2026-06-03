@@ -27,7 +27,7 @@ odin build cmd/probe -out:probe
 External package probing:
 
 ```sh
-./probe run /path/to/package 'target.some_proc()'
+./probe eval /path/to/package 'target.some_proc()'
 ```
 
 This generates a temporary Odin program like:
@@ -47,32 +47,36 @@ main :: proc() {
 For void procedures or statement snippets:
 
 ```sh
-./probe run /path/to/package 'target.do_work()' --no-print
+./probe eval /path/to/package 'target.do_work()' --no-print
 ```
 
 To inspect generated Odin:
 
 ```sh
-./probe run /path/to/package 'target.some_proc()' --show
+./probe eval /path/to/package 'target.some_proc()' --show
 ```
+
+Compile diagnostics that point at the generated probe runner are remapped back
+to `<probe>:line:column` when the error is inside the probed snippet. Errors in
+the target package still report the underlying Odin file.
 
 The compiled Odin CLI also supports writing generated source to a file while
 keeping stdout as just the probe result:
 
 ```sh
-./probe run /path/to/package 'target.some_proc()' --generated /tmp/probe-runner.odin
+./probe eval /path/to/package 'target.some_proc()' --generated /tmp/probe-runner.odin
 ```
 
 To check without running:
 
 ```sh
-./probe check /path/to/package 'target.some_proc()'
+./probe eval /path/to/package 'target.some_proc()' --check
 ```
 
 To save successful stdout into an explicit package-local value slot:
 
 ```sh
-./probe run /path/to/package 'target.some_proc()' --save last-result
+./probe eval /path/to/package 'target.some_proc()' --save last-result
 ./probe store load /path/to/package last-result
 ```
 
@@ -92,11 +96,224 @@ Store commands:
 Standard Odin package commands:
 
 ```sh
-./probe package-run /path/to/package
-./probe package-build /path/to/package
-./probe package-check /path/to/package
-./probe package-test /path/to/package
+./probe run /path/to/package
+./probe build /path/to/package
+./probe check /path/to/package
+./probe test /path/to/package
 ```
+
+Hot reload workflow:
+
+```sh
+./probe reload init scratch
+cd scratch
+odin run .
+../probe reload run reload/reload.conf
+```
+
+`probe reload init` creates a generic starter program and a commented
+`reload/reload.conf` with defaults. The starter is a normal Odin program
+first: `main.odin`, `state.odin`, and `game.odin` are all `package main` and
+can be built or run with ordinary Odin commands. The reload workflow is
+optional development tooling in `reload/reload.odin`.
+
+The reload adapter imports the parent package and the Probe reload runtime.
+Generated host/module wrappers and build outputs live under `.probe/reload/`.
+Module rebuilds compile to a temporary library first and publish the watched
+library only after the build succeeds, so the resident host does not observe a
+half-written dynamic library.
+
+While the host is running, edit your normal program files and rebuild only the
+reloadable library from another terminal:
+
+```sh
+../probe reload rebuild reload/reload.conf
+```
+
+Or keep a rebuild watcher running in that second terminal:
+
+```sh
+../probe reload watch reload/reload.conf
+```
+
+`watch` builds the reloadable module once, then polls the configured watch
+paths for `.odin` changes. Compile failures are printed, but the watcher keeps
+running so the resident host can continue using the last successful generation.
+The generated config uses `watch=..` because the config lives in `reload/`.
+Set `watch=..,../shared` to include sibling local packages and
+`watch_debounce_ms=150` to tune the quiet period before rebuild.
+
+Inspect the generated paths and canonical commands:
+
+```sh
+../probe reload check reload/reload.conf
+../probe reload paths reload/reload.conf
+../probe reload paths reload/reload.conf --json
+```
+
+`check` validates the config, writes the generated wrappers, and runs
+`odin check` on both the reload module wrapper and the resident host wrapper.
+That catches missing or wrongly typed adapter procs before you start the host.
+
+Start the resident host with structured reload events for editor tooling:
+
+```sh
+../probe reload run reload/reload.conf --json
+```
+
+Structured events are printed as line-delimited records prefixed with
+`PROBE_RELOAD_EVENT<TAB>` followed by JSON. `M-x probe-reload-run-json`
+parses those records live in Emacs, reports reload status in the minibuffer,
+and leaves normal app output visible in `*Probe Reload*`.
+
+Remove generated wrappers, build outputs, temporary libraries, and shadow
+copies:
+
+```sh
+../probe reload clean reload/reload.conf
+```
+
+For an existing program, add a `reload/` directory beside your normal
+`main.odin`:
+
+```text
+my_program/
+  main.odin
+  state.odin
+  game.odin
+  reload/
+    reload.odin
+    reload.conf
+```
+
+The adapter package is where reload-only code lives:
+
+```odin
+package reload
+
+import program ".."
+import probe_reload "../path/to/probe/src/probe_reload"
+
+Program_State :: program.Program_State
+
+init :: proc(state: ^Program_State) {
+    program.init(state)
+}
+
+on_load :: proc(state: ^Program_State, is_reload: bool) {
+    program.on_load(state, is_reload)
+}
+
+run :: proc(state: ^Program_State, host: ^probe_reload.Run_Host) {
+    for {
+        program.tick(state)
+
+        if probe_reload.checkpoint(host) {
+            return
+        }
+    }
+}
+```
+
+Add `reload/reload.conf`:
+
+```text
+package=.
+runtime=/path/to/probe/src/probe_reload
+state=Program_State
+run=run
+init=init
+on_load=on_load
+module_name=reload
+watch=..
+watch_debounce_ms=150
+force_reload=force_reload
+force_restart=force_restart
+on_layout_change=reject
+generated_dir=../.probe/reload/generated
+build_dir=../.probe/reload/build
+```
+
+Required config:
+
+```text
+package=.
+runtime=/path/to/probe/src/probe_reload
+state=Program_State
+run=run
+```
+
+Required adapter proc:
+
+```odin
+run :: proc(state: ^Program_State, host: ^probe_reload.Run_Host)
+```
+
+Optional adapter procs:
+
+```odin
+init :: proc(state: ^Program_State)
+on_load :: proc(state: ^Program_State, is_reload: bool)
+on_unload :: proc(state: ^Program_State)
+force_reload :: proc(state: ^Program_State) -> bool
+force_restart :: proc(state: ^Program_State) -> bool
+```
+
+Your reload adapter owns its loop. Probe calls `run(state, host)`. Inside
+`run`, call `probe_reload.checkpoint(host)` at a safe boundary. If it returns
+`true`, return from `run`; Probe will load the new code generation and call the
+new `run`.
+
+If `checkpoint` returns `false`, continue normally. If your production program
+blocks on an event, waits for a frame, receives a request, or advances a job,
+keep doing that in normal application code and call it from the adapter. Probe
+does not own timing.
+
+The durable state contract is one root state, not one giant blob. Compose
+smaller structs inside the root and pass pointers to those nested values:
+
+```odin
+Game_State :: struct {
+    world:  World_State,
+    hud:    Hud_State,
+    assets: Asset_State,
+}
+
+run :: proc(state: ^Game_State, host: ^probe_reload.Run_Host) {
+    for {
+        update_world(&state.world)
+        draw(&state.world, &state.hud, &state.assets)
+        if probe_reload.checkpoint(host) {
+            return
+        }
+    }
+}
+```
+
+Examples:
+
+- `examples/hot_reload_run_app`: program-owned loop with an explicit
+  `probe_reload.checkpoint(host)` boundary.
+- `examples/hot_reload_game`: text-mode game loop with composed state.
+- `examples/hot_reload_raylib`: Raylib frame loop with input, rendering,
+  composed durable state, and reload-only adapter code.
+
+Optional hooks:
+
+- `force_reload`: return true to request a reload even when the library mtime
+  has not changed. A game might wire this to F5.
+- `force_restart`: return true to reset durable state with the current
+  compatible layout. A game might wire this to F6.
+
+Probe keeps old dynamic-library generations loaded until the session shuts
+down. This mirrors the practical game-template pattern where durable state may
+still point at string literals or static data from an older generation.
+`examples/hot_reload_raylib` intentionally keeps a `cstring` HUD message in
+durable state to demonstrate that pattern.
+
+State layout changes are still rejected. Because the generated host owns a
+typed `state := program.State{}` value, changing the state layout requires
+rebuilding and restarting the host.
 
 ## Tests
 
@@ -152,14 +369,24 @@ Default commands:
 - `M-x probe-store-list`: list value slots
 - `M-x probe-store-remove`: remove a value slot
 - `M-x probe-store-path`: show the active store directory
-- `M-x probe-run-package`: run ordinary `odin run .` in the current package
-- `M-x probe-build-package`: run ordinary `odin build .` in the current package, even when it is not a `main` package
-- `M-x probe-check-package`: run ordinary `odin check .` in the current package, even when it is not a `main` package
-- `M-x probe-test-package`: run ordinary `odin test .` in the current package
-- `M-x probe-run-project`: run ordinary `odin run .` at the detected project root
-- `M-x probe-build-project`: run ordinary `odin build .` at the detected project root
-- `M-x probe-check-project`: run ordinary `odin check .` at the detected project root
-- `M-x probe-test-project`: run ordinary `odin test .` at the detected project root
+- `M-x probe-run-package`: run `probe run .` in the current package
+- `M-x probe-build-package`: run `probe build .` in the current package, even when it is not a `main` package
+- `M-x probe-check-package`: run `probe check .` in the current package, even when it is not a `main` package
+- `M-x probe-test-package`: run `probe test .` in the current package
+- `M-x probe-reload-init`: create a generic hot-reload starter directory
+- `M-x probe-reload-check`: check a reload config without building
+- `M-x probe-reload-run`: build and run `probe reload run reload/reload.conf`
+- `M-x probe-reload-run-json`: build and run with live structured reload events in `*Probe Reload Run*`
+- `M-x probe-reload-rebuild`: rebuild only the reloadable library
+- `M-x probe-reload-watch`: watch configured paths and rebuild the reloadable library in `*Probe Reload Watch*`
+- `M-x probe-reload-stop-run`: stop the live reload host
+- `M-x probe-reload-stop-watch`: stop the live reload watcher
+- `M-x probe-reload-paths`: show generated reload paths
+- `M-x probe-reload-clean`: remove generated reload files and build outputs
+- `M-x probe-run-project`: run `probe run .` at the detected project root
+- `M-x probe-build-project`: run `probe build .` at the detected project root
+- `M-x probe-check-project`: run `probe check .` at the detected project root
+- `M-x probe-test-project`: run `probe test .` at the detected project root
 - `M-x probe-toggle-test-after-build`: optionally test after successful package builds
 - `M-x probe-toggle-show-generated`: also show generated Odin
 
@@ -172,10 +399,16 @@ Default `odin-mode` keys installed by `probe-setup-odin-mode-keys`:
 - `C-c C-c`: run the whole current line inline, ignoring cursor subexpression
 - `C-c C-x`: run uncommented `/* ... */` block at point
 - `C-c C-k`: check prompted expression
-- `C-c C-a`: run ordinary package main via `odin run .`
-- `C-c C-b`: build ordinary package via `odin build .`
-- `C-c C-v`: check ordinary package via `odin check .`
-- `C-c C-t`: test ordinary package via `odin test .`
+- `C-c C-a`: run package main via `probe run .`
+- `C-c C-b`: build package via `probe build .`
+- `C-c C-v`: check package via `probe check .`
+- `C-c C-t`: test package via `probe test .`
+- `C-c C-l c`: check reload config, defaulting to `reload/reload.conf`
+- `C-c C-l r`: run reload host with structured events
+- `C-c C-l w`: run reload watcher
+- `C-c C-l b`: rebuild reload module once
+- `C-c C-l k`: stop reload host
+- `C-c C-l K`: stop reload watcher
 - `C-c C-s`: toggle generated Odin display
 - `C-c C-z`: switch to result buffer
 
@@ -186,12 +419,12 @@ shown in the minibuffer, because the test runner's summary is the result you
 usually want to see. The default Emacs test command is:
 
 ```sh
-odin test . -define:ODIN_TEST_LOG_LEVEL=warning
+probe test . -define:ODIN_TEST_LOG_LEVEL=warning
 ```
 
 That suppresses Odin's verbose successful test-runner info logs while preserving
-warnings, errors, and the final summary. Customize `probe-test-command` if
-you want different test runner flags.
+warnings, errors, and the final summary. Customize `probe-test-args` if you
+want different test runner flags.
 
 The package directory defaults to the directory of the current `.odin` file.
 That matches Odin's package model for the external probing MVP. The project

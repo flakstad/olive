@@ -6,17 +6,17 @@ import probe "../../src/probe_core"
 
 usage :: proc() {
     fmt.println("usage:")
-    fmt.println("  probe run <package> <code> [--no-print] [--show] [--generated file] [--internal] [--keep-dir dir] [--import line]")
-    fmt.println("  probe check <package> <code> [--no-print] [--show] [--generated file] [--internal] [--keep-dir dir] [--import line]")
+    fmt.println("  probe run <package> [odin args...]")
+    fmt.println("  probe build <package> [odin args...]")
+    fmt.println("  probe check <package> [odin args...]")
+    fmt.println("  probe test <package> [odin args...]")
+    fmt.println("  probe eval <package> <code> [--check] [--no-print] [--show] [--generated file] [--internal] [--keep-dir dir] [--import line]")
+    fmt.println("  probe reload <init|generate|build|run|rebuild> ...")
     fmt.println("  probe store path <package>")
     fmt.println("  probe store save <package> <name> <value>")
     fmt.println("  probe store load <package> <name>")
     fmt.println("  probe store list <package>")
     fmt.println("  probe store rm <package> <name>")
-    fmt.println("  probe package-run <package> [odin args...]")
-    fmt.println("  probe package-build <package> [odin args...]")
-    fmt.println("  probe package-check <package> [odin args...]")
-    fmt.println("  probe package-test <package> [odin args...]")
 }
 
 print_result :: proc(result: probe.Run_Result) {
@@ -28,7 +28,7 @@ print_result :: proc(result: probe.Run_Result) {
     }
 }
 
-parse_probe_command :: proc(action: string) -> int {
+parse_eval_command :: proc() -> int {
     if len(os.args) < 4 {
         usage()
         return 2
@@ -36,6 +36,7 @@ parse_probe_command :: proc(action: string) -> int {
 
     target_package := os.args[2]
     code := os.args[3]
+    action := "run"
     no_print := false
     show := false
     internal := false
@@ -48,6 +49,9 @@ parse_probe_command :: proc(action: string) -> int {
     i := 4
     for i < len(os.args) {
         switch os.args[i] {
+        case "--check":
+            action = "check"
+            i += 1
         case "--no-print":
             no_print = true
             i += 1
@@ -185,11 +189,17 @@ parse_probe_command :: proc(action: string) -> int {
             return 1
         }
     }
-    print_result(result)
+    mapped_stderr := probe.remap_runner_output_locations(result.stderr, runner, code, !no_print, internal, len(imports))
+    defer delete(mapped_stderr)
+    print_result(probe.Run_Result{
+        exit_code = result.exit_code,
+        stdout    = result.stdout,
+        stderr    = mapped_stderr,
+    })
     return result.exit_code
 }
 
-parse_package_command :: proc(action: string) -> int {
+parse_odin_command :: proc(action: string) -> int {
     if len(os.args) < 3 {
         usage()
         return 2
@@ -308,19 +318,19 @@ main :: proc() {
 
     switch os.args[1] {
     case "run":
-        os.exit(parse_probe_command("run"))
+        os.exit(parse_odin_command("run"))
+    case "build":
+        os.exit(parse_odin_command("build"))
     case "check":
-        os.exit(parse_probe_command("check"))
+        os.exit(parse_odin_command("check"))
+    case "test":
+        os.exit(parse_odin_command("test"))
+    case "eval":
+        os.exit(parse_eval_command())
+    case "reload":
+        os.exit(parse_reload_command())
     case "store":
         os.exit(parse_store_command())
-    case "package-run":
-        os.exit(parse_package_command("run"))
-    case "package-build":
-        os.exit(parse_package_command("build"))
-    case "package-check":
-        os.exit(parse_package_command("check"))
-    case "package-test":
-        os.exit(parse_package_command("test"))
     case "-h", "--help", "help":
         usage()
     case:

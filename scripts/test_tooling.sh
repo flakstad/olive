@@ -36,7 +36,7 @@ expected=(10 1500 17 2 2)
 pids=()
 
 for i in "${!codes[@]}"; do
-  "$probe_bin" run "$pkg" "${codes[$i]}" >"$tmp/out-$i" 2>"$tmp/err-$i" &
+  "$probe_bin" eval "$pkg" "${codes[$i]}" >"$tmp/out-$i" 2>"$tmp/err-$i" &
   pids+=("$!")
 done
 

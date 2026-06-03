@@ -3,6 +3,7 @@ package probe
 import "core:fmt"
 import "core:os"
 import "core:slice"
+import "core:strconv"
 import "core:strings"
 
 Config :: struct {
@@ -18,6 +19,12 @@ Run_Result :: struct {
   exit_code: int,
   stdout:    string,
   stderr:    string,
+}
+
+Generated_Location :: struct {
+  line:        int,
+  column:      int,
+  close_index: int,
 }
 
 STORE_ENV :: "PROBE_STORE_DIR"
@@ -278,6 +285,168 @@ delete_code_lines :: proc(lines: []string) {
     delete(line)
   }
   delete(lines)
+}
+
+count_non_empty_code_lines :: proc(code: string) -> int {
+  count := 0
+  rest := code
+  for len(rest) > 0 {
+    line := rest
+    next_start := len(rest)
+    if newline := strings.index(rest, "\n"); newline >= 0 {
+      line = rest[:newline]
+      next_start = newline + 1
+    }
+    if strings.trim_space(line) != "" {
+      count += 1
+    }
+    rest = rest[next_start:]
+  }
+  return count
+}
+
+count_physical_code_lines :: proc(code: string) -> int {
+  if code == "" {
+    return 0
+  }
+  count := 0
+  rest := code
+  for len(rest) > 0 {
+    next_start := len(rest)
+    if newline := strings.index(rest, "\n"); newline >= 0 {
+      next_start = newline + 1
+    }
+    count += 1
+    rest = rest[next_start:]
+  }
+  return count
+}
+
+generated_user_start_line :: proc(extra_import_count: int, internal: bool) -> int {
+  if internal {
+    return 6 + extra_import_count
+  }
+  return 7 + extra_import_count
+}
+
+generated_user_line_count :: proc(code: string, print_result: bool) -> int {
+  if print_result {
+    count := count_non_empty_code_lines(code)
+    if count == 0 {
+      return 1
+    }
+    return count
+  }
+  return count_physical_code_lines(code)
+}
+
+source_line_for_generated_user_line :: proc(code: string, print_result: bool, generated_offset: int) -> int {
+  if !print_result {
+    return generated_offset + 1
+  }
+
+  rest := code
+  source_line := 1
+  non_empty_seen := 0
+  for len(rest) > 0 {
+    line := rest
+    next_start := len(rest)
+    if newline := strings.index(rest, "\n"); newline >= 0 {
+      line = rest[:newline]
+      next_start = newline + 1
+    }
+    if strings.trim_space(line) != "" {
+      if non_empty_seen == generated_offset {
+        return source_line
+      }
+      non_empty_seen += 1
+    }
+    source_line += 1
+    rest = rest[next_start:]
+  }
+  return 1
+}
+
+parse_generated_location :: proc(line, generated_path: string) -> (Generated_Location, bool) {
+  open_index := strings.index(line, "(")
+  if open_index < 0 {
+    return {}, false
+  }
+
+  file_text := line[:open_index]
+  _, generated_file := os.split_path(generated_path)
+  _, diagnostic_file := os.split_path(file_text)
+  if file_text != generated_path && diagnostic_file != generated_file {
+    return {}, false
+  }
+
+  location := line[open_index+1:]
+  colon_index := strings.index(location, ":")
+  close_offset := strings.index(location, ")")
+  if colon_index < 0 || close_offset < 0 || colon_index > close_offset {
+    return {}, false
+  }
+
+  parsed_line, ok_line := strconv.parse_int(location[:colon_index])
+  if !ok_line {
+    return {}, false
+  }
+
+  parsed_column := 0
+  if colon_index+1 < close_offset {
+    column_text := location[colon_index+1:close_offset]
+    if second_colon := strings.index(column_text, ":"); second_colon >= 0 {
+      column_text = column_text[:second_colon]
+    }
+    parsed, ok_column := strconv.parse_int(column_text)
+    if ok_column {
+      parsed_column = parsed
+    }
+  }
+
+  return Generated_Location{
+    line = parsed_line,
+    column = parsed_column,
+    close_index = open_index + 1 + close_offset,
+  }, true
+}
+
+remap_runner_output_locations :: proc(output, runner_path, code: string, print_result, internal: bool, extra_import_count: int) -> string {
+  if output == "" || runner_path == "" {
+    return strings.clone(output)
+  }
+
+  user_start := generated_user_start_line(extra_import_count, internal)
+  user_count := generated_user_line_count(code, print_result)
+  if user_count == 0 {
+    return strings.clone(output)
+  }
+
+  builder := strings.builder_make()
+  defer strings.builder_destroy(&builder)
+
+  rest := output
+  for len(rest) > 0 {
+    line := rest
+    next_start := len(rest)
+    if newline := strings.index(rest, "\n"); newline >= 0 {
+      line = rest[:newline+1]
+      next_start = newline + 1
+    }
+
+    location, ok_location := parse_generated_location(line, runner_path)
+    if ok_location && location.line >= user_start && location.line < user_start + user_count {
+      source_line := source_line_for_generated_user_line(code, print_result, location.line - user_start)
+      fmt.sbprintf(&builder, "<probe>:%d:%d", source_line, location.column)
+      strings.write_string(&builder, line[location.close_index+1:])
+    } else {
+      strings.write_string(&builder, line)
+    }
+
+    rest = rest[next_start:]
+  }
+
+  return strings.clone(strings.to_string(builder))
 }
 
 write_runner :: proc(config: Config, directory: string) -> (path: string, ok: bool) {
