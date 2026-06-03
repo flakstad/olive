@@ -44,6 +44,11 @@
   :type 'string
   :group 'probe)
 
+(defcustom probe-run-buffer-name "*Probe Run*"
+  "Buffer name used for live `probe run' command output."
+  :type 'string
+  :group 'probe)
+
 (defcustom probe-show-generated nil
   "When non-nil, request and display generated Odin before command output."
   :type 'boolean
@@ -780,6 +785,31 @@ With prefix argument NO-PRINT, treat the code as statements."
       (visual-line-mode 1))
     buffer))
 
+(defun probe--live-command-buffer (directory)
+  "Return the live command output buffer for DIRECTORY."
+  (let ((buffer (get-buffer-create probe-run-buffer-name)))
+    (when-let ((process (get-buffer-process buffer)))
+      (when (process-live-p process)
+        (delete-process process)))
+    (with-current-buffer buffer
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert (format "$ cd %s\n" (abbreviate-file-name directory))))
+      (special-mode)
+      (setq-local truncate-lines nil)
+      (setq-local word-wrap t)
+      (visual-line-mode 1))
+    buffer))
+
+(defun probe--live-process-filter (process chunk)
+  "Insert live PROCESS output CHUNK."
+  (when-let ((buffer (process-buffer process)))
+    (when (buffer-live-p buffer)
+      (with-current-buffer buffer
+        (let ((inhibit-read-only t))
+          (goto-char (point-max))
+          (insert chunk))))))
+
 (defun probe--reload-buffer-name (subcommand)
   "Return the live reload buffer name for SUBCOMMAND."
   (format "%s %s*"
@@ -1029,11 +1059,55 @@ When SHOW-OUTPUT-ON-SUCCESS is non-nil, show command output in the minibuffer."
   "Run probe ARGS in the current project directory."
   (probe--run-probe-command (probe-project-directory) args label on-success show-output-on-success))
 
+(defun probe--run-live-probe-command (directory args label)
+  "Run compiled probe with ARGS in DIRECTORY, showing live output."
+  (let* ((directory (file-name-as-directory (expand-file-name directory)))
+         (buffer (probe--live-command-buffer directory))
+         (compiled (probe--compiled-command-or-error))
+         (command (mapconcat #'shell-quote-argument
+                             (cons compiled args)
+                             " ")))
+    (with-current-buffer buffer
+      (let ((inhibit-read-only t))
+        (goto-char (point-max))
+        (insert (format "$ probe %s\n\n" label))))
+    (let ((default-directory directory))
+      (display-buffer buffer)
+      (make-process
+       :name "probe-run"
+       :buffer buffer
+       :command (list shell-file-name shell-command-switch
+                      (concat "exec " command " 2>&1"))
+       :connection-type 'pipe
+       :filter #'probe--live-process-filter
+       :noquery t
+       :sentinel
+       (lambda (process _event)
+         (when (memq (process-status process) '(exit signal))
+           (let ((exit-code (process-exit-status process))
+                 (buffer (process-buffer process)))
+             (when (buffer-live-p buffer)
+               (with-current-buffer buffer
+                 (let ((inhibit-read-only t))
+                   (goto-char (point-max))
+                   (insert (format "\n$ probe run exited %s\n" exit-code)))))
+             (message "probe run exited %s" exit-code))))))))
+
+(defun probe--stop-live-run ()
+  "Stop live `probe run' process if it is running."
+  (let* ((buffer (get-buffer probe-run-buffer-name))
+         (process (and buffer (get-buffer-process buffer))))
+    (if (and process (process-live-p process))
+        (progn
+          (delete-process process)
+          (message "stopped probe run"))
+      (message "no probe run process running"))))
+
 ;;;###autoload
 (defun probe-run-package ()
   "Run `probe run .' in the current Odin package directory."
   (interactive)
-  (probe--command-in-package (list "run" ".") "run ."))
+  (probe--run-live-probe-command (probe-package-directory) (list "run" ".") "run ."))
 
 ;;;###autoload
 (defun probe-build-package ()
@@ -1065,7 +1139,13 @@ When SHOW-OUTPUT-ON-SUCCESS is non-nil, show command output in the minibuffer."
 (defun probe-run-project ()
   "Run `probe run .' in the current Odin project directory."
   (interactive)
-  (probe--command-in-project (list "run" ".") "run ."))
+  (probe--run-live-probe-command (probe-project-directory) (list "run" ".") "run ."))
+
+;;;###autoload
+(defun probe-stop-run ()
+  "Stop the live `probe run' process."
+  (interactive)
+  (probe--stop-live-run))
 
 ;;;###autoload
 (defun probe-build-project ()
@@ -1245,6 +1325,7 @@ When SHOW-OUTPUT-ON-SUCCESS is non-nil, show command output in the minibuffer."
   (local-set-key (kbd "C-c C-b") #'probe-build-package)
   (local-set-key (kbd "C-c C-v") #'probe-check-package)
   (local-set-key (kbd "C-c C-t") #'probe-test-package)
+  (local-set-key (kbd "C-c C-q") #'probe-stop-run)
   (local-set-key (kbd "C-c C-s") #'probe-toggle-show-generated)
   (local-set-key (kbd "C-c C-l c") #'probe-reload-check)
   (local-set-key (kbd "C-c C-l r") #'probe-reload-run-json)

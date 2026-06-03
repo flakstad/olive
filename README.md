@@ -380,7 +380,7 @@ them with a prefix argument to choose a different config file.
 - `M-x probe-store-list`: list value slots
 - `M-x probe-store-remove`: remove a value slot
 - `M-x probe-store-path`: show the active store directory
-- `M-x probe-run-package`: run `probe run .` in the current package
+- `M-x probe-run-package`: run `probe run .` in the current package using live `*Probe Run*` output
 - `M-x probe-build-package`: run `probe build .` in the current package, even when it is not a `main` package
 - `M-x probe-check-package`: run `probe check .` in the current package, even when it is not a `main` package
 - `M-x probe-test-package`: run `probe test .` in the current package
@@ -394,7 +394,8 @@ them with a prefix argument to choose a different config file.
 - `M-x probe-reload-stop-watch`: stop the live reload watcher
 - `M-x probe-reload-paths`: show generated reload paths
 - `M-x probe-reload-clean`: remove generated reload files and build outputs
-- `M-x probe-run-project`: run `probe run .` at the detected project root
+- `M-x probe-run-project`: run `probe run .` at the detected project root using live `*Probe Run*` output
+- `M-x probe-stop-run`: stop the live `probe run` process
 - `M-x probe-build-project`: run `probe build .` at the detected project root
 - `M-x probe-check-project`: run `probe check .` at the detected project root
 - `M-x probe-test-project`: run `probe test .` at the detected project root
@@ -414,6 +415,7 @@ Default `odin-mode` keys installed by `probe-setup-odin-mode-keys`:
 - `C-c C-b`: build package via `probe build .`
 - `C-c C-v`: check package via `probe check .`
 - `C-c C-t`: test package via `probe test .`
+- `C-c C-q`: stop live `probe run`
 - `C-c C-l c`: check reload config, defaulting to `reload/reload.conf`
 - `C-c C-l r`: run reload host with structured events
 - `C-c C-l w`: run reload watcher
@@ -423,9 +425,10 @@ Default `odin-mode` keys installed by `probe-setup-odin-mode-keys`:
 - `C-c C-s`: toggle generated Odin display
 - `C-c C-z`: switch to result buffer
 
-Build/check/test commands only open `*Probe*` on failure. On success they
-report in the minibuffer and leave your window layout alone. Test commands are
-an exception in one useful way: successful `odin test .` output is compacted and
+Run commands use `*Probe Run*` because they may be long-running programs.
+Build/check/test commands only open `*Probe*` on failure. On success they report
+in the minibuffer and leave your window layout alone. Test commands are an
+exception in one useful way: successful `odin test .` output is compacted and
 shown in the minibuffer, because the test runner's summary is the result you
 usually want to see. The default Emacs test command is:
 
