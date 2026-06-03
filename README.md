@@ -199,11 +199,20 @@ with `odin`, and shows the result back in the editor. For a single `//` comment
 line, Olive evaluates that line. For a `/* ... */` block, it evaluates the whole
 block.
 
+Scratch eval can also save successful eval output under a name. This is meant
+for editor integrations doing exploratory work: evaluate something expensive or
+useful, save the printed result, then load it later without turning that scratch
+step into program code. Olive stores these values under the package's `.olive`
+directory by default, or under `OLIVE_STORE_DIR` if that environment variable is
+set.
+
 You can also run eval from the CLI:
 
 ```sh
 ./olive eval /path/to/package 'target.some_proc()'
 ./olive eval /path/to/package 'target.some_proc()' --check
+./olive eval /path/to/package 'target.some_proc()' --save latest
+./olive store load /path/to/package latest
 ```
 
 ## Emacs
