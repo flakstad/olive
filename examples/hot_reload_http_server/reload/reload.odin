@@ -18,19 +18,9 @@ on_unload :: proc(state: ^Server_State) {
 }
 
 run :: proc(state: ^Server_State, host: ^probe_reload.Run_Host) {
-    server.handle_one_request(&state.routes)
-    state.metrics.jobs += 1
-    server.print_status(state)
+    server.serve_one(state)
 
     if probe_reload.checkpoint(host) {
         return
     }
-}
-
-force_reload :: proc(state: ^Server_State) -> bool {
-    return server.force_reload(state)
-}
-
-force_restart :: proc(state: ^Server_State) -> bool {
-    return server.force_restart(state)
 }

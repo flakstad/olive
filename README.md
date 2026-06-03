@@ -297,11 +297,12 @@ run :: proc(state: ^Game_State, host: ^probe_reload.Run_Host) {
 
 Examples:
 
-- `examples/hot_reload_run_app`: program-owned loop with an explicit
-  `probe_reload.checkpoint(host)` boundary.
-- `examples/hot_reload_game`: text-mode game loop with composed state.
 - `examples/hot_reload_raylib`: Raylib frame loop with input, rendering,
   composed durable state, and reload-only adapter code.
+- `examples/hot_reload_http_server`: localhost HTTP request loop with durable
+  listener state and reloadable routing logic.
+- `examples/hot_reload_local_tool`: worker/tool loop with subsystem pointers
+  rewired in `on_load`.
 
 Optional hooks:
 
