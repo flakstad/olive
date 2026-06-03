@@ -227,8 +227,11 @@ on_load=on_load
 module_name=reload
 watch=..
 watch_debounce_ms=150
+# odin_args=-define:EXAMPLE=true
 force_reload=force_reload
 force_restart=force_restart
+host_init=host_init
+host_shutdown=host_shutdown
 on_layout_change=reject
 generated_dir=../.probe/reload/generated
 build_dir=../.probe/reload/build
@@ -257,6 +260,8 @@ on_load :: proc(state: ^Program_State, is_reload: bool)
 on_unload :: proc(state: ^Program_State)
 force_reload :: proc(state: ^Program_State) -> bool
 force_restart :: proc(state: ^Program_State) -> bool
+host_init :: proc()
+host_shutdown :: proc()
 ```
 
 Your reload adapter owns its loop. Probe calls `run(state, host)`. Inside
@@ -304,6 +309,8 @@ Optional hooks:
   has not changed. A game might wire this to F5.
 - `force_restart`: return true to reset durable state with the current
   compatible layout. A game might wire this to F6.
+- `host_init`/`host_shutdown`: called by the resident host outside reloadable
+  generations. Use these for process-owned resources such as a Raylib window.
 
 Probe keeps old dynamic-library generations loaded until the session shuts
 down. This mirrors the practical game-template pattern where durable state may
@@ -355,6 +362,9 @@ Minimal setup:
 Build `./probe` first.
 
 Default commands:
+
+Reload commands use `reload/reload.conf` automatically when it exists. Call
+them with a prefix argument to choose a different config file.
 
 - `M-x probe-run-expression`: prompt for an Odin expression and print result
 - `M-x probe-run-expression-save`: run an expression and save stdout to a value slot

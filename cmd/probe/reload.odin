@@ -18,12 +18,15 @@ Reload_Config :: struct {
     on_unload_name: string,
     force_reload_name: string,
     force_restart_name: string,
+    host_init_name: string,
+    host_shutdown_name: string,
     layout_policy: string,
     generated_dir: string,
     build_dir:     string,
     module_name:   string,
     watch_paths:   string,
     watch_debounce_ms: string,
+    odin_args: string,
 }
 
 reload_usage :: proc() {
@@ -106,6 +109,10 @@ read_reload_config :: proc(path: string) -> (Reload_Config, string, bool) {
                 cfg.force_reload_name = strings.clone(value)
             case "force_restart":
                 cfg.force_restart_name = strings.clone(value)
+            case "host_init":
+                cfg.host_init_name = strings.clone(value)
+            case "host_shutdown":
+                cfg.host_shutdown_name = strings.clone(value)
             case "on_layout_change":
                 cfg.layout_policy = strings.clone(value)
             case "generated_dir":
@@ -118,6 +125,8 @@ read_reload_config :: proc(path: string) -> (Reload_Config, string, bool) {
                 cfg.watch_paths = strings.clone(value)
             case "watch_debounce_ms":
                 cfg.watch_debounce_ms = strings.clone(value)
+            case "odin_args":
+                cfg.odin_args = strings.clone(value)
             case:
                 return cfg, strings.clone(fmt.tprintf("unknown config key: %s", key)), false
             }
@@ -277,9 +286,16 @@ reload_host_source :: proc(cfg: Reload_Config, host_dir, package_path, runtime_p
     strings.write_string(&b, "}\n\n")
     strings.write_string(&b, "main :: proc() {\n")
     fmt.sbprintf(&b, "    module_path := %q\n", module_binary_path)
+    if cfg.host_init_name != "" {
+        fmt.sbprintf(&b, "    app.%s()\n", cfg.host_init_name)
+    }
     fmt.sbprintf(&b, "    state := app.%s{{}}\n", cfg.state_type)
     strings.write_string(&b, "    symbols := App_Symbols{}\n")
-    strings.write_string(&b, "    os.exit(probe_reload.run_cooperative_host(module_path, &symbols, &state, run, event_handler(), force_reload, force_restart, reset_state))\n")
+    strings.write_string(&b, "    status := probe_reload.run_cooperative_host(module_path, &symbols, &state, run, event_handler(), force_reload, force_restart, reset_state)\n")
+    if cfg.host_shutdown_name != "" {
+        fmt.sbprintf(&b, "    app.%s()\n", cfg.host_shutdown_name)
+    }
+    strings.write_string(&b, "    os.exit(status)\n")
     strings.write_string(&b, "}\n")
     return strings.clone(strings.to_string(b))
 }
@@ -369,6 +385,7 @@ print_reload_paths :: proc(config_path: string, json := false) {
         print_json_field("package", cfg.package_path)
         print_json_field("watch", cfg.watch_paths)
         print_json_field("watch_debounce_ms", cfg.watch_debounce_ms)
+        print_json_field("odin_args", cfg.odin_args)
         print_json_field("build_command", fmt.tprintf("probe reload build %s", config_path))
         print_json_field("run_command", fmt.tprintf("probe reload run %s", config_path))
         print_json_field("watch_command", fmt.tprintf("probe reload watch %s", config_path))
@@ -388,6 +405,7 @@ print_reload_paths :: proc(config_path: string, json := false) {
     fmt.printf("package: %s\n", cfg.package_path)
     fmt.printf("watch: %s\n", cfg.watch_paths)
     fmt.printf("watch_debounce_ms: %s\n", cfg.watch_debounce_ms)
+    fmt.printf("odin_args: %s\n", cfg.odin_args)
     fmt.printf("build_command: probe reload build %s\n", config_path)
     fmt.printf("run_command: probe reload run %s\n", config_path)
     fmt.printf("watch_command: probe reload watch %s\n", config_path)
@@ -512,6 +530,26 @@ watch_debounce_duration :: proc(cfg: Reload_Config) -> time.Duration {
     return time.Duration(ms) * time.Millisecond
 }
 
+append_odin_args :: proc(args: ^[dynamic]string, cfg: Reload_Config) {
+    rest := cfg.odin_args
+    for {
+        part := rest
+        next := ""
+        if space := strings.index_any(rest, " \t"); space >= 0 {
+            part = rest[:space]
+            next = rest[space+1:]
+        }
+        trimmed := trim(part)
+        if trimmed != "" {
+            append(args, trimmed)
+        }
+        if next == "" {
+            break
+        }
+        rest = next
+    }
+}
+
 reload_check :: proc(config_path: string) -> int {
     cfg, paths := read_reload_config_or_exit(config_path)
     ok := true
@@ -581,14 +619,22 @@ reload_check :: proc(config_path: string) -> int {
     _, paths = reload_generate_or_exit(config_path, true)
 
     fmt.printf("[probe reload] checking generated reload module: %s\n", paths.module_dir)
-    module_status := exec_or_exit([]string{"odin", "check", paths.module_dir, "-no-entry-point"})
+    module_check_args := make([dynamic]string)
+    defer delete(module_check_args)
+    append(&module_check_args, "odin", "check", paths.module_dir, "-no-entry-point")
+    append_odin_args(&module_check_args, cfg)
+    module_status := exec_or_exit(module_check_args[:])
     if module_status != 0 {
         fmt.eprintln("[probe reload] reload module check failed")
         return module_status
     }
 
     fmt.printf("[probe reload] checking generated host: %s\n", paths.host_dir)
-    host_status := exec_or_exit([]string{"odin", "check", paths.host_dir})
+    host_check_args := make([dynamic]string)
+    defer delete(host_check_args)
+    append(&host_check_args, "odin", "check", paths.host_dir)
+    append_odin_args(&host_check_args, cfg)
+    host_status := exec_or_exit(host_check_args[:])
     if host_status != 0 {
         fmt.eprintln("[probe reload] host check failed")
         return host_status
@@ -677,7 +723,11 @@ reload_build_status_or_exit :: proc(config_path: string, host: bool, quiet := fa
     defer delete(module_tmp)
     module_out := strings.clone(fmt.tprintf("-out:%s", module_tmp))
     defer delete(module_out)
-    module_status := exec_or_exit([]string{"odin", "build", paths.module_dir, "-build-mode:dll", module_out})
+    module_args := make([dynamic]string)
+    defer delete(module_args)
+    append(&module_args, "odin", "build", paths.module_dir, "-build-mode:dll", module_out)
+    append_odin_args(&module_args, cfg)
+    module_status := exec_or_exit(module_args[:])
     if module_status != 0 {
         if os.exists(module_tmp) {
             _ = os.remove(module_tmp)
@@ -694,7 +744,11 @@ reload_build_status_or_exit :: proc(config_path: string, host: bool, quiet := fa
     if host {
         host_out := strings.clone(fmt.tprintf("-out:%s", paths.host_binary))
         defer delete(host_out)
-        host_status := exec_or_exit([]string{"odin", "build", paths.host_dir, host_out})
+        host_args := make([dynamic]string)
+        defer delete(host_args)
+        append(&host_args, "odin", "build", paths.host_dir, host_out)
+        append_odin_args(&host_args, cfg)
+        host_status := exec_or_exit(host_args[:])
         if host_status != 0 {
             return cfg, paths, host_status
         }
@@ -895,6 +949,11 @@ on_load=on_load
 # force_restart: optional. Return true to reset durable state with the current compatible layout.
 # force_restart=force_restart
 #
+# host_init/host_shutdown: optional. Called by the resident host, not by reloadable code.
+# Use these for process-owned resources such as windows.
+# host_init=host_init
+# host_shutdown=host_shutdown
+#
 # on_layout_change: currently only reject. State layout changes require rebuilding/restarting the host.
 on_layout_change=reject
 #
@@ -906,6 +965,9 @@ watch=..
 #
 # watch_debounce_ms: quiet period after a detected change before rebuilding.
 watch_debounce_ms=150
+#
+# odin_args: optional extra args passed to generated odin check/build commands.
+# odin_args=-define:EXAMPLE=true
 #
 # generated_dir/build_dir: relative to this config file unless absolute.
 generated_dir=../.probe/reload/generated

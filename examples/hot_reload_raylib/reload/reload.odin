@@ -6,10 +6,16 @@ import ray "vendor:raylib"
 
 Game_State :: game.Game_State
 
-ensure_window :: proc() {
+host_init :: proc() {
   if !ray.IsWindowReady() {
     ray.InitWindow(game.WINDOW_WIDTH, game.WINDOW_HEIGHT, "Probe Raylib Hot Reload")
     ray.SetTargetFPS(60)
+  }
+}
+
+host_shutdown :: proc() {
+  if ray.IsWindowReady() {
+    ray.CloseWindow()
   }
 }
 
@@ -18,7 +24,6 @@ init :: proc(state: ^Game_State) {
 }
 
 on_load :: proc(state: ^Game_State, is_reload: bool) {
-  ensure_window()
   game.on_load(state, is_reload)
 }
 

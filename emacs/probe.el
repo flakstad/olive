@@ -830,6 +830,14 @@ With prefix argument NO-PRINT, treat the code as statements."
          (name (file-name-nondirectory default)))
     (read-file-name "Reload config: " dir default t name)))
 
+(defun probe--interactive-reload-config (&optional choose)
+  "Return reload config for an interactive command.
+When CHOOSE is non-nil, prompt even if a default config exists."
+  (let ((default (probe--default-reload-config)))
+    (if (or choose (not (file-exists-p default)))
+        (probe--read-reload-config)
+      default)))
+
 (defun probe--reload-event-value (event key)
   "Return KEY from parsed reload EVENT."
   (cond
@@ -1092,7 +1100,7 @@ When SHOW-OUTPUT-ON-SUCCESS is non-nil, show command output in the minibuffer."
 ;;;###autoload
 (defun probe-reload-generate (config)
   "Generate hot-reload host/module wrappers from CONFIG."
-  (interactive (list (probe--read-reload-config)))
+  (interactive (list (probe--interactive-reload-config current-prefix-arg)))
   (probe--command-in-project
    (list "reload" "generate" (expand-file-name config))
    (format "reload generate %s" config)
@@ -1102,7 +1110,7 @@ When SHOW-OUTPUT-ON-SUCCESS is non-nil, show command output in the minibuffer."
 ;;;###autoload
 (defun probe-reload-check (config)
   "Check hot-reload CONFIG without building."
-  (interactive (list (probe--read-reload-config)))
+  (interactive (list (probe--interactive-reload-config current-prefix-arg)))
   (probe--command-in-project
    (list "reload" "check" (expand-file-name config))
    (format "reload check %s" config)
@@ -1112,7 +1120,7 @@ When SHOW-OUTPUT-ON-SUCCESS is non-nil, show command output in the minibuffer."
 ;;;###autoload
 (defun probe-reload-build (config)
   "Build hot-reload host and module from CONFIG."
-  (interactive (list (probe--read-reload-config)))
+  (interactive (list (probe--interactive-reload-config current-prefix-arg)))
   (probe--command-in-project
    (list "reload" "build" (expand-file-name config))
    (format "reload build %s" config)
@@ -1122,19 +1130,19 @@ When SHOW-OUTPUT-ON-SUCCESS is non-nil, show command output in the minibuffer."
 ;;;###autoload
 (defun probe-reload-run (config)
   "Build and run hot-reload host from CONFIG."
-  (interactive (list (probe--read-reload-config)))
+  (interactive (list (probe--interactive-reload-config current-prefix-arg)))
   (probe--run-reload-command (probe-project-directory) config))
 
 ;;;###autoload
 (defun probe-reload-run-json (config)
   "Build and run hot-reload host from CONFIG with structured events."
-  (interactive (list (probe--read-reload-config)))
+  (interactive (list (probe--interactive-reload-config current-prefix-arg)))
   (probe--run-reload-command (probe-project-directory) config t))
 
 ;;;###autoload
 (defun probe-reload-rebuild (config)
   "Rebuild only the hot-reload module from CONFIG."
-  (interactive (list (probe--read-reload-config)))
+  (interactive (list (probe--interactive-reload-config current-prefix-arg)))
   (probe--command-in-project
    (list "reload" "rebuild" (expand-file-name config))
    (format "reload rebuild %s" config)
@@ -1144,13 +1152,13 @@ When SHOW-OUTPUT-ON-SUCCESS is non-nil, show command output in the minibuffer."
 ;;;###autoload
 (defun probe-reload-watch (config)
   "Watch CONFIG's reload paths and rebuild the hot-reload module on changes."
-  (interactive (list (probe--read-reload-config)))
+  (interactive (list (probe--interactive-reload-config current-prefix-arg)))
   (probe--run-reload-command (probe-project-directory) config nil "watch"))
 
 ;;;###autoload
 (defun probe-reload-paths (config)
   "Show hot-reload generated paths for CONFIG."
-  (interactive (list (probe--read-reload-config)))
+  (interactive (list (probe--interactive-reload-config current-prefix-arg)))
   (probe--command-in-project
    (list "reload" "paths" (expand-file-name config))
    (format "reload paths %s" config)
@@ -1160,7 +1168,7 @@ When SHOW-OUTPUT-ON-SUCCESS is non-nil, show command output in the minibuffer."
 ;;;###autoload
 (defun probe-reload-clean (config)
   "Remove hot-reload generated files and build outputs for CONFIG."
-  (interactive (list (probe--read-reload-config)))
+  (interactive (list (probe--interactive-reload-config current-prefix-arg)))
   (probe--command-in-project
    (list "reload" "clean" (expand-file-name config))
    (format "reload clean %s" config)
