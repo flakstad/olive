@@ -1078,7 +1078,7 @@ When SHOW-OUTPUT-ON-SUCCESS is non-nil, show command output in the minibuffer."
        :buffer buffer
        :command (list shell-file-name shell-command-switch
                       (concat "exec " command " 2>&1"))
-       :connection-type 'pipe
+       :connection-type 'pty
        :filter #'probe--live-process-filter
        :noquery t
        :sentinel

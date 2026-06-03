@@ -740,13 +740,20 @@ run_odin_package :: proc(action, package_path: string, extra_args: []string) -> 
   for arg in extra_args {
     append(&args, arg)
   }
-  state, stdout, stderr, err := os.process_exec(
-    os.Process_Desc{command = args[:]},
-    context.allocator,
-  )
+
+  process, start_err := os.process_start(os.Process_Desc{
+    command = args[:],
+    stdin   = os.stdin,
+    stdout  = os.stdout,
+    stderr  = os.stderr,
+  })
   exit_code := 1
-  if err == nil && state.exited {
+  if start_err != nil {
+    return Run_Result{exit_code = exit_code}
+  }
+  state, wait_err := os.process_wait(process)
+  if wait_err == nil && state.exited {
     exit_code = state.exit_code
   }
-  return Run_Result{exit_code = exit_code, stdout = string(stdout), stderr = string(stderr)}
+  return Run_Result{exit_code = exit_code}
 }
