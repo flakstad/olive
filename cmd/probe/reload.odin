@@ -910,13 +910,8 @@ on_load :: proc(state: ^Program_State, is_reload: bool) {
 }
 
 run :: proc(state: ^Program_State, host: ^probe_reload.Run_Host) {
-    for _ in 0..<10 {
-        program.tick(state)
-
-        if probe_reload.checkpoint(host) {
-            return
-        }
-    }
+    _ = host
+    program.tick(state)
 }
 `)
     reload_source := strings.to_string(reload_builder)
@@ -931,7 +926,7 @@ runtime=%s
 # state: one durable root state type owned by the resident host.
 state=Program_State
 #
-# run: reloadable entry point. The reload adapter owns this proc and calls probe_reload.checkpoint(host).
+# run: reloadable entry point. Probe calls it repeatedly and checks for reloads between calls.
 run=run
 #
 # init: optional. Called once for the first load.

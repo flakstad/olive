@@ -3,12 +3,19 @@ package main
 import "core:fmt"
 import "core:net"
 import "core:strings"
+import "core:time"
 
 init :: proc(state: ^Server_State) {
     state^ = {}
     listener, err := net.listen_tcp({net.IP4_Loopback, SERVER_PORT}, 16)
     if err != nil {
         fmt.eprintf("failed to listen on http://127.0.0.1:%d: %v\n", SERVER_PORT, err)
+        return
+    }
+    block_err := net.set_blocking(listener, false)
+    if block_err != nil {
+        net.close(listener)
+        fmt.eprintf("failed to make listener nonblocking: %v\n", block_err)
         return
     }
     state.listener = listener
@@ -41,6 +48,10 @@ serve_one :: proc(state: ^Server_State) {
 
     client, _, accept_err := net.accept_tcp(state.listener)
     if accept_err != nil {
+        if accept_err == .Would_Block {
+            time.sleep(25 * time.Millisecond)
+            return
+        }
         fmt.eprintf("accept failed: %v\n", accept_err)
         return
     }

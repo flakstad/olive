@@ -32,14 +32,11 @@ on_unload :: proc(state: ^Game_State) {
 }
 
 run :: proc(state: ^Game_State, host: ^probe_reload.Run_Host) {
-  for !ray.WindowShouldClose() {
-    game.frame(state)
-
-    if probe_reload.checkpoint(host) {
-      return
-    }
+  if ray.WindowShouldClose() {
+    probe_reload.request_exit(host)
+    return
   }
-  probe_reload.request_exit(host)
+  game.frame(state)
 }
 
 force_reload :: proc(state: ^Game_State) -> bool {

@@ -4,11 +4,11 @@ This is a small Raylib game-shaped example using Probe hot reload. Production
 code is normal Odin: `main.odin` opens the window, owns the process lifetime,
 and calls `frame(&state)` until Raylib says the window should close.
 
-The reload workflow is isolated to `reload/reload.odin`. Its `run` proc owns
-the development frame loop and calls `probe_reload.checkpoint(host)` once per
-frame after drawing. Because the reload host does not execute production
-`main.odin`, the reload adapter uses `host_init`/`host_shutdown` to initialize
-the Raylib window once in the resident host.
+The reload workflow is isolated to `reload/reload.odin`. Its `run` proc draws
+one frame and returns; Probe checks for reloads between frames. Because the
+reload host does not execute production `main.odin`, the reload adapter uses
+`host_init`/`host_shutdown` to initialize the Raylib window once in the
+resident host.
 
 From the Probe repo root:
 

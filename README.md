@@ -205,13 +205,8 @@ on_load :: proc(state: ^Program_State, is_reload: bool) {
 }
 
 run :: proc(state: ^Program_State, host: ^probe_reload.Run_Host) {
-    for {
-        program.tick(state)
-
-        if probe_reload.checkpoint(host) {
-            return
-        }
-    }
+    _ = host
+    program.tick(state)
 }
 ```
 
@@ -264,15 +259,14 @@ host_init :: proc()
 host_shutdown :: proc()
 ```
 
-Your reload adapter owns its loop. Probe calls `run(state, host)`. Inside
-`run`, call `probe_reload.checkpoint(host)` at a safe boundary. If it returns
-`true`, return from `run`; Probe will load the new code generation and call the
-new `run`.
+Probe owns the development loop. It calls `run(state, host)` repeatedly and
+checks for reloads between calls. Keep `run` to one frame, one request poll, one
+small batch, or another short unit of work. If your normal code blocks forever
+inside `run`, Probe cannot safely swap code until that proc returns.
 
-If `checkpoint` returns `false`, continue normally. If your production program
-blocks on an event, waits for a frame, receives a request, or advances a job,
-keep doing that in normal application code and call it from the adapter. Probe
-does not own timing.
+Most adapters do not need to call `probe_reload.checkpoint`. It remains
+available for unusual long-running adapter loops: call it at a safe boundary,
+and return from `run` when it returns `true`.
 
 The durable state contract is one root state, not one giant blob. Compose
 smaller structs inside the root and pass pointers to those nested values:
@@ -285,13 +279,9 @@ Game_State :: struct {
 }
 
 run :: proc(state: ^Game_State, host: ^probe_reload.Run_Host) {
-    for {
-        update_world(&state.world)
-        draw(&state.world, &state.hud, &state.assets)
-        if probe_reload.checkpoint(host) {
-            return
-        }
-    }
+    _ = host
+    update_world(&state.world)
+    draw(&state.world, &state.hud, &state.assets)
 }
 ```
 

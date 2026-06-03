@@ -15,11 +15,8 @@ on_load :: proc(state: ^Tool_State, is_reload: bool) {
 }
 
 run :: proc(state: ^Tool_State, host: ^probe_reload.Run_Host) {
+    _ = host
     tool.process_batch(state)
-
-    if probe_reload.checkpoint(host) {
-        return
-    }
 
     time.sleep(300 * time.Millisecond)
 }

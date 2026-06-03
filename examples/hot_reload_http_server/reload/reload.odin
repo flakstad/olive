@@ -18,9 +18,6 @@ on_unload :: proc(state: ^Server_State) {
 }
 
 run :: proc(state: ^Server_State, host: ^probe_reload.Run_Host) {
+    _ = host
     server.serve_one(state)
-
-    if probe_reload.checkpoint(host) {
-        return
-    }
 }

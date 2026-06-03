@@ -4,9 +4,9 @@ This example is a small localhost HTTP server. It demonstrates a request loop
 instead of a frame loop: production `main.odin` listens on
 `http://127.0.0.1:8099`, accepts requests, and calls reloadable routing logic.
 
-The reload adapter serves one request, then calls `probe_reload.checkpoint`.
-When code has been rebuilt, the current request finishes first and the next
-request uses the new route logic.
+The reload adapter polls for one request and returns. The listener is
+nonblocking, so Probe can check for reloads even while the server is idle and
+the next request uses the new route logic.
 
 From the Probe repo root:
 
@@ -28,6 +28,7 @@ In another terminal:
 ./probe reload watch examples/hot_reload_http_server/reload/reload.conf
 ```
 
-Edit `server.odin`, save, then make another request with `curl`. The server
+Edit `server.odin` and save. The watcher rebuilds the module, Probe reloads it
+while idle, and the next `curl` request uses the new route logic. The server
 preserves request counters and route metrics across reloads. The listener is
 stored in durable state and is closed only when the process exits.
