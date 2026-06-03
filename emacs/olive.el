@@ -1258,18 +1258,18 @@ Show `olive-result-buffer-name' only on failure. Run ON-SUCCESS on exit 0."
   (olive--run-reload-command (olive-project-directory) config t))
 
 ;;;###autoload
-(defun olive-rebuild (config)
-  "Rebuild only the hot-reload module from CONFIG."
+(defun olive-build (config)
+  "Build only the hot-reload module from CONFIG."
   (interactive (list (olive--interactive-reload-config current-prefix-arg)))
   (olive--command-in-project
-   (list "rebuild" (expand-file-name config))
-   (format "rebuild %s" config)
+   (list "build" (expand-file-name config))
+   (format "build %s" config)
    nil
    t))
 
 ;;;###autoload
 (defun olive-watch (config)
-  "Watch CONFIG's reload paths and rebuild the hot-reload module on changes."
+  "Watch CONFIG's reload paths and build the hot-reload module on changes."
   (interactive (list (olive--interactive-reload-config current-prefix-arg)))
   (olive--run-reload-command (olive-project-directory) config nil "watch"))
 
@@ -1368,7 +1368,7 @@ Show `olive-result-buffer-name' only on failure. Run ON-SUCCESS on exit 0."
   (local-set-key (kbd "C-c C-l c") #'olive-check)
   (local-set-key (kbd "C-c C-l r") #'olive-run-json)
   (local-set-key (kbd "C-c C-l w") #'olive-watch)
-  (local-set-key (kbd "C-c C-l b") #'olive-rebuild)
+  (local-set-key (kbd "C-c C-l b") #'olive-build)
   (local-set-key (kbd "C-c C-l k") #'olive-stop-reload-run)
   (local-set-key (kbd "C-c C-l K") #'olive-stop-watch)
   (local-set-key (kbd "C-c C-z") #'olive-switch-to-result))

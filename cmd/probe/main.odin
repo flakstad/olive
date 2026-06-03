@@ -9,9 +9,9 @@ usage :: proc() {
     fmt.println("  olive init <dir>")
     fmt.println("  olive generate <reload.conf>")
     fmt.println("  olive check <reload.conf>")
-    fmt.println("  olive run <reload.conf> [--json]")
-    fmt.println("  olive rebuild <reload.conf>")
-    fmt.println("  olive watch <reload.conf>")
+    fmt.println("  olive run [reload.conf] [--json]")
+    fmt.println("  olive build [reload.conf]")
+    fmt.println("  olive watch [reload.conf]")
     fmt.println("  olive paths <reload.conf> [--json]")
     fmt.println("  olive clean <reload.conf>")
     fmt.println("  olive eval <package> <code> [--check] [--no-print] [--show] [--generated file] [--internal] [--keep-dir dir] [--import line] [--save name]")
@@ -302,7 +302,7 @@ main :: proc() {
     }
 
     switch os.args[1] {
-    case "init", "generate", "check", "run", "rebuild", "watch", "paths", "clean":
+    case "init", "generate", "check", "run", "build", "watch", "paths", "clean":
         os.exit(parse_reload_command())
     case "eval":
         os.exit(parse_eval_command())

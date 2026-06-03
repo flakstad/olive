@@ -34,11 +34,22 @@ reload_usage :: proc() {
     fmt.println("  olive init <dir>")
     fmt.println("  olive generate <reload.conf>")
     fmt.println("  olive check <reload.conf>")
-    fmt.println("  olive run <reload.conf> [--json]")
-    fmt.println("  olive rebuild <reload.conf>")
-    fmt.println("  olive watch <reload.conf>")
+    fmt.println("  olive run [reload.conf] [--json]")
+    fmt.println("  olive build [reload.conf]")
+    fmt.println("  olive watch [reload.conf]")
     fmt.println("  olive paths <reload.conf> [--json]")
     fmt.println("  olive clean <reload.conf>")
+}
+
+default_reload_config_path :: proc() -> string {
+    return strings.clone("reload/reload.conf")
+}
+
+reload_config_arg_or_default :: proc(index: int) -> string {
+    if len(os.args) > index {
+        return strings.clone(os.args[index])
+    }
+    return default_reload_config_path()
 }
 
 trim :: proc(value: string) -> string {
@@ -387,7 +398,7 @@ print_reload_paths :: proc(config_path: string, json := false) {
         print_json_field("odin_args", cfg.odin_args)
         print_json_field("run_command", fmt.tprintf("olive run %s", config_path))
         print_json_field("watch_command", fmt.tprintf("olive watch %s", config_path))
-        print_json_field("rebuild_command", fmt.tprintf("olive rebuild %s", config_path), false)
+        print_json_field("build_command", fmt.tprintf("olive build %s", config_path), false)
         fmt.println("}")
         return
     }
@@ -406,7 +417,7 @@ print_reload_paths :: proc(config_path: string, json := false) {
     fmt.printf("odin_args: %s\n", cfg.odin_args)
     fmt.printf("run_command: olive run %s\n", config_path)
     fmt.printf("watch_command: olive watch %s\n", config_path)
-    fmt.printf("rebuild_command: olive rebuild %s\n", config_path)
+    fmt.printf("build_command: olive build %s\n", config_path)
 }
 
 remove_path_if_exists :: proc(path: string) -> bool {
@@ -795,9 +806,9 @@ reload_watch :: proc(config_path: string) -> int {
         fmt.println("[olive] change detected; rebuilding module")
         _, _, rebuild_status := reload_build_status_or_exit(config_path, false, true)
         if rebuild_status == 0 {
-            fmt.println("[olive] rebuild ok")
+            fmt.println("[olive] build ok")
         } else {
-            fmt.printf("[olive] rebuild failed exit=%d; still watching\n", rebuild_status)
+            fmt.printf("[olive] build failed exit=%d; still watching\n", rebuild_status)
         }
     }
     return 0
@@ -992,19 +1003,23 @@ parse_reload_command :: proc() -> int {
             return 2
         }
         return reload_check(os.args[2])
-    case "rebuild":
-        if len(os.args) != 3 {
+    case "build":
+        if len(os.args) != 2 && len(os.args) != 3 {
             reload_usage()
             return 2
         }
-        _, _ = reload_build_or_exit(os.args[2], false)
+        config := reload_config_arg_or_default(2)
+        defer delete(config)
+        _, _ = reload_build_or_exit(config, false)
         return 0
     case "watch":
-        if len(os.args) != 3 {
+        if len(os.args) != 2 && len(os.args) != 3 {
             reload_usage()
             return 2
         }
-        return reload_watch(os.args[2])
+        config := reload_config_arg_or_default(2)
+        defer delete(config)
+        return reload_watch(config)
     case "paths":
         if len(os.args) != 3 && len(os.args) != 4 {
             reload_usage()
@@ -1027,19 +1042,36 @@ parse_reload_command :: proc() -> int {
         }
         return clean_reload_paths(os.args[2])
     case "run":
-        if len(os.args) != 3 && len(os.args) != 4 {
+        if len(os.args) < 2 || len(os.args) > 4 {
             reload_usage()
             return 2
         }
-        host_args := make([dynamic]string)
-        defer delete(host_args)
-        _, paths := reload_build_or_exit(os.args[2], true)
-        append(&host_args, paths.host_binary)
-        if len(os.args) == 4 {
+        json := false
+        config := ""
+        if len(os.args) == 2 {
+            config = default_reload_config_path()
+        } else if len(os.args) == 3 {
+            if os.args[2] == "--json" {
+                config = default_reload_config_path()
+                json = true
+            } else {
+                config = strings.clone(os.args[2])
+            }
+        } else {
+            config = strings.clone(os.args[2])
             if os.args[3] != "--json" {
+                delete(config)
                 reload_usage()
                 return 2
             }
+            json = true
+        }
+        defer delete(config)
+        host_args := make([dynamic]string)
+        defer delete(host_args)
+        _, paths := reload_build_or_exit(config, true)
+        append(&host_args, paths.host_binary)
+        if json {
             append(&host_args, "--json")
         }
         return exec_foreground_or_exit(host_args[:])

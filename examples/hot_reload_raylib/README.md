@@ -19,14 +19,14 @@ odin run examples/hot_reload_raylib
 ./olive run examples/hot_reload_raylib/reload/reload.conf
 ```
 
-In another terminal, edit `examples/hot_reload_raylib/game.odin`, then rebuild
+In another terminal, edit `examples/hot_reload_raylib/game.odin`, then build
 only the reloadable module:
 
 ```sh
-./olive rebuild examples/hot_reload_raylib/reload/reload.conf
+./olive build examples/hot_reload_raylib/reload/reload.conf
 ```
 
-Or keep the rebuild watcher running:
+Or keep the build watcher running:
 
 ```sh
 ./olive watch examples/hot_reload_raylib/reload/reload.conf

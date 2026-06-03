@@ -38,19 +38,19 @@ odin run .
 Run the reload host:
 
 ```sh
-../olive run reload/reload.conf
+../olive run
 ```
 
 In another terminal, keep the reloadable module rebuilding as you save files:
 
 ```sh
-../olive watch reload/reload.conf
+../olive watch
 ```
 
-Or rebuild manually:
+Or build manually:
 
 ```sh
-../olive rebuild reload/reload.conf
+../olive build
 ```
 
 The reload adapter's `run` proc should return regularly. Olive calls it
@@ -111,3 +111,8 @@ Olive's hot-reload workflow is inspired in part by Karl Zylinski's Odin Raylib
 hot reload template:
 
 https://github.com/karl-zylinski/odin-raylib-hot-reload-game-template
+
+The broader motivation comes from Clojure and Lisp development: keeping a
+program alive, evaluating small pieces of code, and getting a tight feedback
+loop without constantly restarting the whole system. Olive is an Odin-shaped
+attempt at that workflow using generated Odin and the real compiler.
