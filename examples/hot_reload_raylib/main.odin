@@ -9,8 +9,6 @@ main :: proc() {
 
     state := Game_State{}
     init(&state)
-    on_load(&state, false)
-    defer on_unload(&state)
 
     for !ray.WindowShouldClose() {
         frame(&state)

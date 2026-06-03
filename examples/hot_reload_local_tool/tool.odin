@@ -18,13 +18,6 @@ init :: proc(state: ^Tool_State) {
     state.report.summary = "started"
 }
 
-on_load :: proc(state: ^Tool_State, is_reload: bool) {
-    if is_reload {
-        state.report.reloads += 1
-        state.report.summary = "code reloaded; durable subsystem state preserved"
-    }
-}
-
 process_batch :: proc(state: ^Tool_State) {
     doc := next_document(state)
     words := parse_document(&state.parser, doc)

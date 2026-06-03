@@ -15,17 +15,6 @@ init :: proc(state: ^Game_State) {
   state.hud.message = "normal run"
 }
 
-on_load :: proc(state: ^Game_State, is_reload: bool) {
-  if is_reload {
-    state.hud.reloads += 1
-    state.hud.message = "code reloaded"
-  }
-}
-
-on_unload :: proc(state: ^Game_State) {
-  state.hud.message = "unloading"
-}
-
 frame :: proc(state: ^Game_State) {
   dt := f32(ray.GetFrameTime())
   if dt <= 0 || dt > 0.05 {

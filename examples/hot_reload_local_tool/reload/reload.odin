@@ -11,7 +11,10 @@ init :: proc(state: ^Tool_State) {
 }
 
 on_load :: proc(state: ^Tool_State, is_reload: bool) {
-    tool.on_load(state, is_reload)
+    if is_reload {
+        state.report.reloads += 1
+        state.report.summary = "code reloaded; durable subsystem state preserved"
+    }
 }
 
 run :: proc(state: ^Tool_State, host: ^probe_reload.Run_Host) {

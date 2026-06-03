@@ -865,21 +865,12 @@ Program_State :: struct {
 `
     game_source := `package main
 
-import "core:fmt"
-
 init :: proc(state: ^Program_State) {
     state.ticks = 0
 }
 
-on_load :: proc(state: ^Program_State, is_reload: bool) {
-    if is_reload {
-        fmt.println("reloaded")
-    }
-}
-
 tick :: proc(state: ^Program_State) {
     state.ticks += 1
-    fmt.printf("ticks=%d\n", state.ticks)
 }
 `
     main_source := `package main
@@ -887,7 +878,6 @@ tick :: proc(state: ^Program_State) {
 main :: proc() {
     state := Program_State{}
     init(&state)
-    on_load(&state, false)
 
     for _ in 0..<10 {
         tick(&state)
@@ -897,6 +887,7 @@ main :: proc() {
     reload_builder := strings.builder_make()
     defer strings.builder_destroy(&reload_builder)
     strings.write_string(&reload_builder, "package reload\n\n")
+    strings.write_string(&reload_builder, "import \"core:fmt\"\n")
     fmt.sbprintf(&reload_builder, "import program %q\n", root_import)
     fmt.sbprintf(&reload_builder, "import probe_reload %q\n\n", runtime_config_path)
     strings.write_string(&reload_builder, `Program_State :: program.Program_State
@@ -906,7 +897,10 @@ init :: proc(state: ^Program_State) {
 }
 
 on_load :: proc(state: ^Program_State, is_reload: bool) {
-    program.on_load(state, is_reload)
+    _ = state
+    if is_reload {
+        fmt.println("reloaded")
+    }
 }
 
 run :: proc(state: ^Program_State, host: ^probe_reload.Run_Host) {

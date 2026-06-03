@@ -191,6 +191,7 @@ The adapter package is where reload-only code lives:
 ```odin
 package reload
 
+import "core:fmt"
 import program ".."
 import probe_reload "../path/to/probe/src/probe_reload"
 
@@ -201,7 +202,10 @@ init :: proc(state: ^Program_State) {
 }
 
 on_load :: proc(state: ^Program_State, is_reload: bool) {
-    program.on_load(state, is_reload)
+    _ = state
+    if is_reload {
+        fmt.println("reloaded")
+    }
 }
 
 run :: proc(state: ^Program_State, host: ^probe_reload.Run_Host) {
