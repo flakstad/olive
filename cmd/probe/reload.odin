@@ -291,7 +291,7 @@ reload_host_source :: proc(cfg: Reload_Config, host_dir, package_path, runtime_p
     }
     fmt.sbprintf(&b, "    state := app.%s{{}}\n", cfg.state_type)
     strings.write_string(&b, "    symbols := App_Symbols{}\n")
-    strings.write_string(&b, "    status := probe_reload.run_cooperative_host(module_path, &symbols, &state, run, event_handler(), force_reload, force_restart, reset_state)\n")
+    strings.write_string(&b, "    status := probe_reload.run_host(module_path, &symbols, &state, run, event_handler(), force_reload, force_restart, reset_state)\n")
     if cfg.host_shutdown_name != "" {
         fmt.sbprintf(&b, "    app.%s()\n", cfg.host_shutdown_name)
     }

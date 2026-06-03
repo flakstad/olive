@@ -264,9 +264,8 @@ checks for reloads between calls. Keep `run` to one frame, one request poll, one
 small batch, or another short unit of work. If your normal code blocks forever
 inside `run`, Probe cannot safely swap code until that proc returns.
 
-Most adapters do not need to call `probe_reload.checkpoint`. It remains
-available for unusual long-running adapter loops: call it at a safe boundary,
-and return from `run` when it returns `true`.
+Use `probe_reload.request_exit(host)` from `run` when the resident reload host
+should stop. Otherwise, return normally and Probe will call `run` again.
 
 The durable state contract is one root state, not one giant blob. Compose
 smaller structs inside the root and pass pointers to those nested values:

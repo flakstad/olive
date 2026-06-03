@@ -23,7 +23,6 @@ Reload_Event_Kind :: enum {
     Reloaded,
     Restarted,
     Reload_Failed,
-    Checkpoint_Error,
 }
 
 Reload_Event :: struct {
@@ -33,11 +32,7 @@ Reload_Event :: struct {
 }
 
 Run_Host :: struct {
-    module_path: string,
-    last_write:  time.Time,
-    reload_requested: bool,
     exit_requested: bool,
-    error_message: string,
 }
 
 Session :: struct {
@@ -268,8 +263,6 @@ default_event_handler :: proc(event: Reload_Event) {
         fmt.printf("[probe reload] restarted generation=%d: %s\n", event.generation, event.message)
     case .Reload_Failed:
         fmt.eprintf("[probe reload] reload failed: %s\n", event.message)
-    case .Checkpoint_Error:
-        fmt.eprintf("[probe reload] checkpoint error: %s\n", event.message)
     }
 }
 
@@ -283,8 +276,6 @@ event_kind_name :: proc(kind: Reload_Event_Kind) -> string {
         return "restarted"
     case .Reload_Failed:
         return "reload_failed"
-    case .Checkpoint_Error:
-        return "checkpoint_error"
     }
     return "unknown"
 }
@@ -322,32 +313,11 @@ json_event_handler :: proc(event: Reload_Event) {
     fmt.print(strings.to_string(b))
 }
 
-run_host_init :: proc(host: ^Run_Host, module_path: string) {
-    host.module_path = module_path
-    host.reload_requested = false
-    host.exit_requested = false
-    host.error_message = ""
-    host.last_write, _ = library_write_time(module_path)
-}
-
 request_exit :: proc(host: ^Run_Host) {
     host.exit_requested = true
 }
 
-checkpoint :: proc(host: ^Run_Host) -> bool {
-    write_time, ok := library_write_time(host.module_path)
-    if !ok {
-        host.error_message = "failed to stat reload library"
-        return false
-    }
-    if time.time_to_unix_nano(write_time) != time.time_to_unix_nano(host.last_write) {
-        host.reload_requested = true
-        return true
-    }
-    return false
-}
-
-run_cooperative_host :: proc(
+run_host :: proc(
     module_path: string,
     app_symbols: ^$T,
     state: ^$S,
@@ -367,17 +337,11 @@ run_cooperative_host :: proc(
     on_event(Reload_Event{kind = .Started, generation = session.generation})
 
     host := Run_Host{}
-    run_host_init(&host, module_path)
     for {
-        host.reload_requested = false
         host.exit_requested = false
-        host.error_message = ""
         run(app_symbols, state, &host)
         if host.exit_requested {
             return 0
-        }
-        if host.error_message != "" {
-            on_event(Reload_Event{kind = .Checkpoint_Error, generation = session.generation, message = host.error_message})
         }
         if force_restart != nil && force_restart(app_symbols, state) && init_state != nil {
             if session.core.on_unload != nil {
@@ -395,7 +359,6 @@ run_cooperative_host :: proc(
         if changed {
             on_event(event)
         }
-        host.last_write = session.last_write
     }
     return 0
 }
