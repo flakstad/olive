@@ -5,9 +5,9 @@ import "core:os"
 import "core:sync"
 import "core:strings"
 import "core:testing"
-import probe "../src/probe_core"
+import olive "../src/olive_core"
 
-build_probe_binary_mutex: sync.Mutex
+build_olive_binary_mutex: sync.Mutex
 exec_mutex: sync.Mutex
 
 Exec_Result :: struct {
@@ -176,18 +176,18 @@ sample_test :: proc(t: ^testing.T) {
   return package_path, true
 }
 
-build_probe_binary :: proc(t: ^testing.T, root: string) -> (binary: string, ok: bool) {
-  sync.mutex_lock(&build_probe_binary_mutex)
-  defer sync.mutex_unlock(&build_probe_binary_mutex)
+build_olive_binary :: proc(t: ^testing.T, root: string) -> (binary: string, ok: bool) {
+  sync.mutex_lock(&build_olive_binary_mutex)
+  defer sync.mutex_unlock(&build_olive_binary_mutex)
 
-  binary_path, join_err := os.join_path({root, "probe"}, context.allocator)
+  binary_path, join_err := os.join_path({root, "olive"}, context.allocator)
   testing.expect_value(t, join_err == nil, true)
   if join_err != nil {
     return "", false
   }
   out_arg := strings.clone(fmt.tprintf("-out:%s", binary_path))
   defer delete(out_arg)
-  result := exec([]string{"odin", "build", "cmd/probe", out_arg})
+  result := exec([]string{"odin", "build", "cmd/olive", out_arg})
   defer delete_exec_result(result)
   if result.exit_code != 0 {
     fmt.eprintln(result.stderr)
@@ -202,7 +202,7 @@ build_probe_binary :: proc(t: ^testing.T, root: string) -> (binary: string, ok: 
 
 @(test)
 render_printing_runner :: proc(t: ^testing.T) {
-  output := probe.render_runner(probe.Config{
+  output := olive.render_runner(olive.Config{
     package_path = "/tmp/pkg",
     code = "target.answer()",
     print_result = true,
@@ -216,8 +216,8 @@ render_printing_runner :: proc(t: ^testing.T) {
 }
 
 @(test)
-render_internal_multiline_probe :: proc(t: ^testing.T) {
-  output := probe.render_internal_runner(probe.Config{
+render_internal_multiline_olive :: proc(t: ^testing.T) {
+  output := olive.render_internal_runner(olive.Config{
     package_path = "/tmp/pkg",
     code = "x := 1\nadd(x, 3)",
     print_result = true,
@@ -240,15 +240,15 @@ add :: proc(a: int, b: int) -> int {
 
 add(5,3)
 `
-  output := probe.comment_top_level_scratch_lines(source)
+  output := olive.comment_top_level_scratch_lines(source)
   defer delete(output)
   testing.expect_value(t, strings.contains(output, "add :: proc"), true)
-  testing.expect_value(t, strings.contains(output, "/* probe scratch: add(5,3) */"), true)
+  testing.expect_value(t, strings.contains(output, "/* olive scratch: add(5,3) */"), true)
 }
 
 @(test)
 render_no_print_runner :: proc(t: ^testing.T) {
-  output := probe.render_runner(probe.Config{
+  output := olive.render_runner(olive.Config{
     package_path = "/tmp/pkg",
     code = "target.run()",
     print_result = false,
@@ -260,26 +260,26 @@ render_no_print_runner :: proc(t: ^testing.T) {
 }
 
 @(test)
-remap_external_runner_diagnostic_to_probe_expr_line :: proc(t: ^testing.T) {
-  stderr := "/tmp/probe-1/main.odin(7:15) Error: Unknown identifier: nope\n"
-  output := probe.remap_runner_output_locations(stderr, "/tmp/probe-1/main.odin", "nope()", true, false, 0)
+remap_external_runner_diagnostic_to_olive_expr_line :: proc(t: ^testing.T) {
+  stderr := "/tmp/olive-1/main.odin(7:15) Error: Unknown identifier: nope\n"
+  output := olive.remap_runner_output_locations(stderr, "/tmp/olive-1/main.odin", "nope()", true, false, 0)
   defer delete(output)
-  testing.expect_value(t, output, "<probe>:1:15 Error: Unknown identifier: nope\n")
+  testing.expect_value(t, output, "<olive>:1:15 Error: Unknown identifier: nope\n")
 }
 
 @(test)
-remap_internal_runner_diagnostic_to_probe_multiline_source_line :: proc(t: ^testing.T) {
-  stderr := "/tmp/probe-1/probe_runner.odin(7:18) Error: Unknown identifier: nope\n"
+remap_internal_runner_diagnostic_to_olive_multiline_source_line :: proc(t: ^testing.T) {
+  stderr := "/tmp/olive-1/olive_runner.odin(7:18) Error: Unknown identifier: nope\n"
   code := "x := 1\n\nnope(x)"
-  output := probe.remap_runner_output_locations(stderr, "/tmp/probe-1/probe_runner.odin", code, true, true, 0)
+  output := olive.remap_runner_output_locations(stderr, "/tmp/olive-1/olive_runner.odin", code, true, true, 0)
   defer delete(output)
-  testing.expect_value(t, output, "<probe>:3:18 Error: Unknown identifier: nope\n")
+  testing.expect_value(t, output, "<olive>:3:18 Error: Unknown identifier: nope\n")
 }
 
 @(test)
 remap_leaves_non_snippet_diagnostics_alone :: proc(t: ^testing.T) {
-  stderr := "/tmp/probe-1/app.odin(3:1) Error: package error\n"
-  output := probe.remap_runner_output_locations(stderr, "/tmp/probe-1/probe_runner.odin", "nope()", true, true, 0)
+  stderr := "/tmp/olive-1/app.odin(3:1) Error: package error\n"
+  output := olive.remap_runner_output_locations(stderr, "/tmp/olive-1/olive_runner.odin", "nope()", true, true, 0)
   defer delete(output)
   testing.expect_value(t, output, stderr)
 }
@@ -300,15 +300,15 @@ another :: proc(a: int) -> int {
     return a * 2
 }
 `
-  output := probe.comment_top_level_scratch_lines(source)
+  output := olive.comment_top_level_scratch_lines(source)
   defer delete(output)
   testing.expect_value(t, strings.contains(output, "/*\nadd(5,3)\n*/"), true)
-  testing.expect_value(t, strings.contains(output, "probe scratch: add(5,3)"), false)
+  testing.expect_value(t, strings.contains(output, "olive scratch: add(5,3)"), false)
 }
 
 @(test)
 store_values_round_trip :: proc(t: ^testing.T) {
-  package_dir, dir_err := os.make_directory_temp("", "probe-store-test-*", context.allocator)
+  package_dir, dir_err := os.make_directory_temp("", "olive-store-test-*", context.allocator)
   testing.expect_value(t, dir_err == nil, true)
   if dir_err != nil {
     return
@@ -317,25 +317,25 @@ store_values_round_trip :: proc(t: ^testing.T) {
     _ = os.remove_all(package_dir)
     delete(package_dir)
   }
-  testing.expect_value(t, probe.save_value(package_dir, "answer", "42\n"), true)
-  value, ok := probe.load_value(package_dir, "answer")
+  testing.expect_value(t, olive.save_value(package_dir, "answer", "42\n"), true)
+  value, ok := olive.load_value(package_dir, "answer")
   testing.expect_value(t, ok, true)
   if ok {
     defer delete(transmute([]byte)value)
     testing.expect_value(t, value, "42\n")
   }
-  names := probe.list_values(package_dir)
-  defer probe.delete_string_slice(names)
+  names := olive.list_values(package_dir)
+  defer olive.delete_string_slice(names)
   testing.expect_value(t, len(names), 1)
   if len(names) == 1 {
     testing.expect_value(t, names[0], "answer")
   }
-  testing.expect_value(t, probe.remove_value(package_dir, "answer"), true)
+  testing.expect_value(t, olive.remove_value(package_dir, "answer"), true)
 }
 
 @(test)
-compiled_cli_external_and_internal_probe :: proc(t: ^testing.T) {
-  root, dir_err := os.make_directory_temp("", "probe-cli-basic-test-*", context.allocator)
+compiled_cli_external_and_internal_olive :: proc(t: ^testing.T) {
+  root, dir_err := os.make_directory_temp("", "olive-cli-basic-test-*", context.allocator)
   testing.expect_value(t, dir_err == nil, true)
   if dir_err != nil {
     return
@@ -344,7 +344,7 @@ compiled_cli_external_and_internal_probe :: proc(t: ^testing.T) {
     _ = os.remove_all(root)
     delete(root)
   }
-  binary, binary_ok := build_probe_binary(t, root)
+  binary, binary_ok := build_olive_binary(t, root)
   if !binary_ok {
     return
   }
@@ -369,14 +369,14 @@ compiled_cli_external_and_internal_probe :: proc(t: ^testing.T) {
     binary,
     "eval",
     sample_pkg,
-    `_ = os.write_entire_file_from_string("probe-cwd.txt", "ok")`,
+    `_ = os.write_entire_file_from_string("olive-cwd.txt", "ok")`,
     "--no-print",
     "--import",
     `import "core:os"`,
   })
   defer delete_exec_result(cwd_result)
   testing.expect_value(t, cwd_result.exit_code, 0)
-  cwd_file, cwd_join_err := os.join_path({sample_pkg, "probe-cwd.txt"}, context.allocator)
+  cwd_file, cwd_join_err := os.join_path({sample_pkg, "olive-cwd.txt"}, context.allocator)
   testing.expect_value(t, cwd_join_err == nil, true)
   if cwd_join_err == nil {
     defer delete(cwd_file)
@@ -399,8 +399,8 @@ compiled_cli_external_and_internal_probe :: proc(t: ^testing.T) {
 }
 
 @(test)
-compiled_cli_internal_probe_comments_top_level_scratch :: proc(t: ^testing.T) {
-  root, dir_err := os.make_directory_temp("", "probe-cli-scratch-test-*", context.allocator)
+compiled_cli_internal_olive_comments_top_level_scratch :: proc(t: ^testing.T) {
+  root, dir_err := os.make_directory_temp("", "olive-cli-scratch-test-*", context.allocator)
   testing.expect_value(t, dir_err == nil, true)
   if dir_err != nil {
     return
@@ -409,7 +409,7 @@ compiled_cli_internal_probe_comments_top_level_scratch :: proc(t: ^testing.T) {
     _ = os.remove_all(root)
     delete(root)
   }
-  binary, binary_ok := build_probe_binary(t, root)
+  binary, binary_ok := build_olive_binary(t, root)
   if !binary_ok {
     return
   }
@@ -439,14 +439,14 @@ compiled_cli_internal_probe_comments_top_level_scratch :: proc(t: ^testing.T) {
   testing.expect_value(t, read_err == nil, true)
   if read_err == nil {
     defer delete(copied_source)
-    testing.expect_value(t, strings.contains(string(copied_source), "/* probe scratch: add(5, 3) */"), true)
-    testing.expect_value(t, strings.contains(string(copied_source), "probe_original_main :: proc()"), true)
+    testing.expect_value(t, strings.contains(string(copied_source), "/* olive scratch: add(5, 3) */"), true)
+    testing.expect_value(t, strings.contains(string(copied_source), "olive_original_main :: proc()"), true)
   }
 }
 
 @(test)
 compiled_cli_runs_and_writes_generated_source :: proc(t: ^testing.T) {
-  root, dir_err := os.make_directory_temp("", "probe-cli-test-*", context.allocator)
+  root, dir_err := os.make_directory_temp("", "olive-cli-test-*", context.allocator)
   testing.expect_value(t, dir_err == nil, true)
   if dir_err != nil {
     return
@@ -455,7 +455,7 @@ compiled_cli_runs_and_writes_generated_source :: proc(t: ^testing.T) {
     _ = os.remove_all(root)
     delete(root)
   }
-  binary, binary_ok := build_probe_binary(t, root)
+  binary, binary_ok := build_olive_binary(t, root)
   if !binary_ok {
     return
   }
@@ -495,7 +495,7 @@ compiled_cli_runs_and_writes_generated_source :: proc(t: ^testing.T) {
 
 @(test)
 compiled_cli_relative_keep_dir_runs_from_package_cwd :: proc(t: ^testing.T) {
-  root, dir_err := os.make_directory_temp("", "probe-cli-keep-dir-test-*", context.allocator)
+  root, dir_err := os.make_directory_temp("", "olive-cli-keep-dir-test-*", context.allocator)
   testing.expect_value(t, dir_err == nil, true)
   if dir_err != nil {
     return
@@ -504,7 +504,7 @@ compiled_cli_relative_keep_dir_runs_from_package_cwd :: proc(t: ^testing.T) {
     _ = os.remove_all(root)
     delete(root)
   }
-  binary, binary_ok := build_probe_binary(t, root)
+  binary, binary_ok := build_olive_binary(t, root)
   if !binary_ok {
     return
   }
@@ -514,7 +514,7 @@ compiled_cli_relative_keep_dir_runs_from_package_cwd :: proc(t: ^testing.T) {
     return
   }
   defer delete(pkg)
-  keep_dir := "relative-probe-runner"
+  keep_dir := "relative-olive-runner"
   result := exec([]string{binary, "eval", pkg, "target.answer()", "--keep-dir", keep_dir}, root)
   defer delete_exec_result(result)
   testing.expect_value(t, result.exit_code, 0)
@@ -529,7 +529,7 @@ compiled_cli_relative_keep_dir_runs_from_package_cwd :: proc(t: ^testing.T) {
 
 @(test)
 compiled_cli_reload_init_check_and_build :: proc(t: ^testing.T) {
-  root, dir_err := os.make_directory_temp("", "probe-cli-reload-test-*", context.allocator)
+  root, dir_err := os.make_directory_temp("", "olive-cli-reload-test-*", context.allocator)
   testing.expect_value(t, dir_err == nil, true)
   if dir_err != nil {
     return
@@ -538,7 +538,7 @@ compiled_cli_reload_init_check_and_build :: proc(t: ^testing.T) {
     _ = os.remove_all(root)
     delete(root)
   }
-  binary, binary_ok := build_probe_binary(t, root)
+  binary, binary_ok := build_olive_binary(t, root)
   if !binary_ok {
     return
   }
@@ -616,7 +616,7 @@ compiled_cli_reload_init_check_and_build :: proc(t: ^testing.T) {
       return
     }
     defer delete(cwd)
-    runtime_path, runtime_join_err := os.join_path({cwd, "src", "probe_reload"}, context.allocator)
+    runtime_path, runtime_join_err := os.join_path({cwd, "src", "olive_reload"}, context.allocator)
     testing.expect_value(t, runtime_join_err == nil, true)
     if runtime_join_err != nil {
       return
@@ -627,8 +627,8 @@ runtime=%s
 state=Program_State
 run=missing_run
 watch=reload
-generated_dir=.probe/bad-run/generated
-build_dir=.probe/bad-run/build
+generated_dir=.olive/bad-run/generated
+build_dir=.olive/bad-run/build
 `, runtime_path)
     testing.expect_value(t, os.write_entire_file_from_string(bad_run_config_path, bad_run_config) == nil, true)
     bad_run_result := exec([]string{binary, "check", bad_run_config_path})
@@ -665,7 +665,7 @@ run=run
       return
     }
     defer delete(cwd)
-    runtime_path, runtime_join_err := os.join_path({cwd, "src", "probe_reload"}, context.allocator)
+    runtime_path, runtime_join_err := os.join_path({cwd, "src", "olive_reload"}, context.allocator)
     testing.expect_value(t, runtime_join_err == nil, true)
     if runtime_join_err != nil {
       return
@@ -689,7 +689,7 @@ watch_debounce_ms=nope
   defer delete_exec_result(clean_result)
   testing.expect_value(t, clean_result.exit_code, 0)
 
-  generated_dir, generated_join_err := os.join_path({app_dir, ".probe", "reload", "generated"}, context.allocator)
+  generated_dir, generated_join_err := os.join_path({app_dir, ".olive", "reload", "generated"}, context.allocator)
   testing.expect_value(t, generated_join_err == nil, true)
   if generated_join_err == nil {
     defer delete(generated_dir)
@@ -699,7 +699,7 @@ watch_debounce_ms=nope
 
 @(test)
 compiled_cli_store_commands_round_trip :: proc(t: ^testing.T) {
-  root, dir_err := os.make_directory_temp("", "probe-cli-store-test-*", context.allocator)
+  root, dir_err := os.make_directory_temp("", "olive-cli-store-test-*", context.allocator)
   testing.expect_value(t, dir_err == nil, true)
   if dir_err != nil {
     return
@@ -708,7 +708,7 @@ compiled_cli_store_commands_round_trip :: proc(t: ^testing.T) {
     _ = os.remove_all(root)
     delete(root)
   }
-  binary, binary_ok := build_probe_binary(t, root)
+  binary, binary_ok := build_olive_binary(t, root)
   if !binary_ok {
     return
   }

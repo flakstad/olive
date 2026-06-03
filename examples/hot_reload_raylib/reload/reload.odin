@@ -1,7 +1,7 @@
 package reload
 
 import game ".."
-import probe_reload "../../../src/probe_reload"
+import olive_reload "../../../src/olive_reload"
 import ray "vendor:raylib"
 
 Game_State :: game.Game_State
@@ -32,9 +32,9 @@ on_unload :: proc(state: ^Game_State) {
   state.hud.message = "unloading"
 }
 
-run :: proc(state: ^Game_State, host: ^probe_reload.Run_Host) {
+run :: proc(state: ^Game_State, host: ^olive_reload.Run_Host) {
   if ray.WindowShouldClose() {
-    probe_reload.request_exit(host)
+    olive_reload.request_exit(host)
     return
   }
   game.frame(state)

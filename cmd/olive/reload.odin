@@ -72,8 +72,8 @@ read_reload_config :: proc(path: string) -> (Reload_Config, string, bool) {
     defer delete(data)
 
     cfg := Reload_Config{
-        generated_dir = ".probe/reload/generated",
-        build_dir = ".probe/reload/build",
+        generated_dir = ".olive/reload/generated",
+        build_dir = ".olive/reload/build",
         module_name = "reload",
         layout_policy = "reject",
         watch_paths = "",
@@ -238,14 +238,14 @@ reload_module_source :: proc(cfg: Reload_Config, module_dir, package_path, runti
 
     b := strings.builder_make()
     defer strings.builder_destroy(&b)
-    strings.write_string(&b, "package probe_reload_module\n\n")
+    strings.write_string(&b, "package olive_reload_module\n\n")
     strings.write_string(&b, "import \"base:runtime\"\n")
     fmt.sbprintf(&b, "import app %q\n", app_import)
-    fmt.sbprintf(&b, "import probe_reload %q\n\n", runtime_import)
-    strings.write_string(&b, "@(export)\nprobe_reload_api_version: u32 = probe_reload.MANIFEST_API_VERSION\n\n")
-    fmt.sbprintf(&b, "@(export)\nprobe_reload_state_size :: proc \"c\" () -> int {{\n    return size_of(app.%s)\n}}\n\n", cfg.state_type)
-    fmt.sbprintf(&b, "@(export)\nprobe_reload_state_align :: proc \"c\" () -> int {{\n    return align_of(app.%s)\n}}\n\n", cfg.state_type)
-    fmt.sbprintf(&b, "@(export)\nprobe_reload_on_load :: proc \"c\" (state: rawptr, is_reload: bool) {{\n    context = runtime.default_context()\n    app_state := (^app.%s)(state)\n", cfg.state_type)
+    fmt.sbprintf(&b, "import olive_reload %q\n\n", runtime_import)
+    strings.write_string(&b, "@(export)\nolive_reload_api_version: u32 = olive_reload.MANIFEST_API_VERSION\n\n")
+    fmt.sbprintf(&b, "@(export)\nolive_reload_state_size :: proc \"c\" () -> int {{\n    return size_of(app.%s)\n}}\n\n", cfg.state_type)
+    fmt.sbprintf(&b, "@(export)\nolive_reload_state_align :: proc \"c\" () -> int {{\n    return align_of(app.%s)\n}}\n\n", cfg.state_type)
+    fmt.sbprintf(&b, "@(export)\nolive_reload_on_load :: proc \"c\" (state: rawptr, is_reload: bool) {{\n    context = runtime.default_context()\n    app_state := (^app.%s)(state)\n", cfg.state_type)
     if cfg.init_name != "" {
         fmt.sbprintf(&b, "    if !is_reload {{\n        app.%s(app_state)\n    }}\n", cfg.init_name)
     }
@@ -253,17 +253,17 @@ reload_module_source :: proc(cfg: Reload_Config, module_dir, package_path, runti
         fmt.sbprintf(&b, "    if is_reload {{\n        app.%s(app_state)\n    }}\n", cfg.on_load_name)
     }
     strings.write_string(&b, "}\n\n")
-    fmt.sbprintf(&b, "@(export)\nprobe_reload_on_unload :: proc \"c\" (state: rawptr) {{\n    context = runtime.default_context()\n    app_state := (^app.%s)(state)\n", cfg.state_type)
+    fmt.sbprintf(&b, "@(export)\nolive_reload_on_unload :: proc \"c\" (state: rawptr) {{\n    context = runtime.default_context()\n    app_state := (^app.%s)(state)\n", cfg.state_type)
     if cfg.on_unload_name != "" {
         fmt.sbprintf(&b, "    app.%s(app_state)\n", cfg.on_unload_name)
     }
     strings.write_string(&b, "}\n\n")
-    fmt.sbprintf(&b, "@(export)\nprobe_reload_app_run :: proc \"c\" (state: rawptr, host: rawptr) {{\n    context = runtime.default_context()\n    app_state := (^app.%s)(state)\n    app_host := (^probe_reload.Run_Host)(host)\n    app.%s(app_state, app_host)\n}}\n", cfg.state_type, cfg.run_name)
+    fmt.sbprintf(&b, "@(export)\nolive_reload_app_run :: proc \"c\" (state: rawptr, host: rawptr) {{\n    context = runtime.default_context()\n    app_state := (^app.%s)(state)\n    app_host := (^olive_reload.Run_Host)(host)\n    app.%s(app_state, app_host)\n}}\n", cfg.state_type, cfg.run_name)
     if cfg.force_reload_name != "" {
-        fmt.sbprintf(&b, "\n@(export)\nprobe_reload_force_reload :: proc \"c\" (state: rawptr) -> bool {{\n    context = runtime.default_context()\n    app_state := (^app.%s)(state)\n    return app.%s(app_state)\n}}\n", cfg.state_type, cfg.force_reload_name)
+        fmt.sbprintf(&b, "\n@(export)\nolive_reload_force_reload :: proc \"c\" (state: rawptr) -> bool {{\n    context = runtime.default_context()\n    app_state := (^app.%s)(state)\n    return app.%s(app_state)\n}}\n", cfg.state_type, cfg.force_reload_name)
     }
     if cfg.force_restart_name != "" {
-        fmt.sbprintf(&b, "\n@(export)\nprobe_reload_force_restart :: proc \"c\" (state: rawptr) -> bool {{\n    context = runtime.default_context()\n    app_state := (^app.%s)(state)\n    return app.%s(app_state)\n}}\n", cfg.state_type, cfg.force_restart_name)
+        fmt.sbprintf(&b, "\n@(export)\nolive_reload_force_restart :: proc \"c\" (state: rawptr) -> bool {{\n    context = runtime.default_context()\n    app_state := (^app.%s)(state)\n    return app.%s(app_state)\n}}\n", cfg.state_type, cfg.force_restart_name)
     }
     return strings.clone(strings.to_string(b))
 }
@@ -276,23 +276,23 @@ reload_host_source :: proc(cfg: Reload_Config, host_dir, package_path, runtime_p
 
     b := strings.builder_make()
     defer strings.builder_destroy(&b)
-    strings.write_string(&b, "package probe_reload_host\n\n")
+    strings.write_string(&b, "package olive_reload_host\n\n")
     strings.write_string(&b, "import \"core:dynlib\"\n")
     strings.write_string(&b, "import \"core:os\"\n")
     fmt.sbprintf(&b, "import app %q\n", app_import)
-    fmt.sbprintf(&b, "import probe_reload %q\n\n", runtime_import)
-    strings.write_string(&b, "App_Symbols :: struct {\n    run: proc \"c\" (state: rawptr, host: rawptr) `dynlib:\"probe_reload_app_run\"`,\n    force_reload: proc \"c\" (state: rawptr) -> bool `dynlib:\"probe_reload_force_reload\"`,\n    force_restart: proc \"c\" (state: rawptr) -> bool `dynlib:\"probe_reload_force_restart\"`,\n    __handle: dynlib.Library,\n}\n\n")
-    fmt.sbprintf(&b, "run :: proc(symbols: ^App_Symbols, state: ^app.%s, host: ^probe_reload.Run_Host) {{\n    symbols.run(rawptr(state), rawptr(host))\n}}\n\n", cfg.state_type)
+    fmt.sbprintf(&b, "import olive_reload %q\n\n", runtime_import)
+    strings.write_string(&b, "App_Symbols :: struct {\n    run: proc \"c\" (state: rawptr, host: rawptr) `dynlib:\"olive_reload_app_run\"`,\n    force_reload: proc \"c\" (state: rawptr) -> bool `dynlib:\"olive_reload_force_reload\"`,\n    force_restart: proc \"c\" (state: rawptr) -> bool `dynlib:\"olive_reload_force_restart\"`,\n    __handle: dynlib.Library,\n}\n\n")
+    fmt.sbprintf(&b, "run :: proc(symbols: ^App_Symbols, state: ^app.%s, host: ^olive_reload.Run_Host) {{\n    symbols.run(rawptr(state), rawptr(host))\n}}\n\n", cfg.state_type)
     fmt.sbprintf(&b, "force_reload :: proc(symbols: ^App_Symbols, state: ^app.%s) -> bool {{\n    return symbols.force_reload != nil && symbols.force_reload(rawptr(state))\n}}\n\n", cfg.state_type)
     fmt.sbprintf(&b, "force_restart :: proc(symbols: ^App_Symbols, state: ^app.%s) -> bool {{\n    return symbols.force_restart != nil && symbols.force_restart(rawptr(state))\n}}\n\n", cfg.state_type)
     fmt.sbprintf(&b, "reset_state :: proc(state: ^app.%s) {{\n    state^ = app.%s{{}}\n}}\n\n", cfg.state_type, cfg.state_type)
-    strings.write_string(&b, "event_handler :: proc() -> proc(probe_reload.Reload_Event) {\n")
+    strings.write_string(&b, "event_handler :: proc() -> proc(olive_reload.Reload_Event) {\n")
     strings.write_string(&b, "    for arg in os.args[1:] {\n")
     strings.write_string(&b, "        if arg == \"--json\" {\n")
-    strings.write_string(&b, "            return probe_reload.json_event_handler\n")
+    strings.write_string(&b, "            return olive_reload.json_event_handler\n")
     strings.write_string(&b, "        }\n")
     strings.write_string(&b, "    }\n")
-    strings.write_string(&b, "    return probe_reload.default_event_handler\n")
+    strings.write_string(&b, "    return olive_reload.default_event_handler\n")
     strings.write_string(&b, "}\n\n")
     strings.write_string(&b, "main :: proc() {\n")
     fmt.sbprintf(&b, "    module_path := %q\n", module_binary_path)
@@ -301,7 +301,7 @@ reload_host_source :: proc(cfg: Reload_Config, host_dir, package_path, runtime_p
     }
     fmt.sbprintf(&b, "    state := app.%s{{}}\n", cfg.state_type)
     strings.write_string(&b, "    symbols := App_Symbols{}\n")
-    strings.write_string(&b, "    status := probe_reload.run_host(module_path, &symbols, &state, run, event_handler(), force_reload, force_restart, reset_state)\n")
+    strings.write_string(&b, "    status := olive_reload.run_host(module_path, &symbols, &state, run, event_handler(), force_reload, force_restart, reset_state)\n")
     if cfg.host_shutdown_name != "" {
         fmt.sbprintf(&b, "    app.%s()\n", cfg.host_shutdown_name)
     }
@@ -464,7 +464,7 @@ newest_odin_write_time :: proc(path: string) -> (time.Time, bool) {
         return {}, false
     }
     for entry in entries {
-        if entry.name == "." || entry.name == ".." || entry.name == ".probe" {
+        if entry.name == "." || entry.name == ".." || entry.name == ".olive" {
             continue
         }
         child := entry.fullpath
@@ -814,14 +814,14 @@ reload_watch :: proc(config_path: string) -> int {
     return 0
 }
 
-probe_reload_runtime_path_or_exit :: proc(from_dir: string) -> string {
+olive_reload_runtime_path_or_exit :: proc(from_dir: string) -> string {
     if override, found := os.lookup_env("OLIVE_RELOAD_RUNTIME", context.allocator); found {
         return override
     }
 
     executable_dir, exe_err := os.get_executable_directory(context.allocator)
     if exe_err == nil {
-        candidate := join_or_exit([]string{executable_dir, "src", "probe_reload"})
+        candidate := join_or_exit([]string{executable_dir, "src", "olive_reload"})
         delete(executable_dir)
         if os.is_directory(candidate) {
             return candidate
@@ -831,7 +831,7 @@ probe_reload_runtime_path_or_exit :: proc(from_dir: string) -> string {
 
     cwd, cwd_err := os.get_working_directory(context.allocator)
     if cwd_err == nil {
-        candidate := join_or_exit([]string{cwd, "src", "probe_reload"})
+        candidate := join_or_exit([]string{cwd, "src", "olive_reload"})
         delete(cwd)
         if os.is_directory(candidate) {
             return candidate
@@ -839,7 +839,7 @@ probe_reload_runtime_path_or_exit :: proc(from_dir: string) -> string {
         delete(candidate)
     }
 
-    fmt.eprintln("could not find Olive reload runtime; set OLIVE_RELOAD_RUNTIME=/path/to/olive/src/probe_reload")
+    fmt.eprintln("could not find Olive reload runtime; set OLIVE_RELOAD_RUNTIME=/path/to/olive/src/olive_reload")
     os.exit(1)
 }
 
@@ -858,7 +858,7 @@ reload_init_program :: proc(dir: string) {
     defer delete(reload_file)
     config_file := join_or_exit([]string{reload_dir, "reload.conf"})
     defer delete(config_file)
-    runtime_path := probe_reload_runtime_path_or_exit(dir)
+    runtime_path := olive_reload_runtime_path_or_exit(dir)
     defer delete(runtime_path)
     runtime_config_path := relative_import_or_exit(reload_dir, runtime_path)
     defer delete(runtime_config_path)
@@ -897,7 +897,7 @@ main :: proc() {
     strings.write_string(&reload_builder, "package reload\n\n")
     strings.write_string(&reload_builder, "import \"core:fmt\"\n")
     fmt.sbprintf(&reload_builder, "import program %q\n", root_import)
-    fmt.sbprintf(&reload_builder, "import probe_reload %q\n\n", runtime_config_path)
+    fmt.sbprintf(&reload_builder, "import olive_reload %q\n\n", runtime_config_path)
     strings.write_string(&reload_builder, `Program_State :: program.Program_State
 
 init :: proc(state: ^Program_State) {
@@ -909,7 +909,7 @@ on_load :: proc(state: ^Program_State) {
     fmt.println("reloaded")
 }
 
-run :: proc(state: ^Program_State, host: ^probe_reload.Run_Host) {
+run :: proc(state: ^Program_State, host: ^olive_reload.Run_Host) {
     _ = host
     program.tick(state)
 }
@@ -966,8 +966,8 @@ watch_debounce_ms=150
 # odin_args=-define:EXAMPLE=true
 #
 # generated_dir/build_dir: relative to this config file unless absolute.
-generated_dir=../.probe/reload/generated
-build_dir=../.probe/reload/build
+generated_dir=../.olive/reload/generated
+build_dir=../.olive/reload/build
 `, runtime_config_path)
     write_file_or_exit(state_file, state_source)
     write_file_or_exit(game_file, game_source)

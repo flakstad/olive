@@ -1,4 +1,4 @@
-package probe
+package olive
 
 import "core:fmt"
 import "core:os"
@@ -27,7 +27,7 @@ Generated_Location :: struct {
   close_index: int,
 }
 
-STORE_ENV :: "PROBE_STORE_DIR"
+STORE_ENV :: "OLIVE_STORE_DIR"
 
 valid_store_name :: proc(name: string) -> bool {
   if name == "" || name == "." || name == ".." {
@@ -56,7 +56,7 @@ store_dir :: proc(package_path: string) -> (path: string, ok: bool) {
     return "", false
   }
   defer delete(package_abs)
-  joined, join_err := os.join_path({package_abs, ".probe", "values"}, context.allocator)
+  joined, join_err := os.join_path({package_abs, ".olive", "values"}, context.allocator)
   if join_err != nil {
     return "", false
   }
@@ -437,7 +437,7 @@ remap_runner_output_locations :: proc(output, runner_path, code: string, print_r
     location, ok_location := parse_generated_location(line, runner_path)
     if ok_location && location.line >= user_start && location.line < user_start + user_count {
       source_line := source_line_for_generated_user_line(code, print_result, location.line - user_start)
-      fmt.sbprintf(&builder, "<probe>:%d:%d", source_line, location.column)
+      fmt.sbprintf(&builder, "<olive>:%d:%d", source_line, location.column)
       strings.write_string(&builder, line[location.close_index+1:])
     } else {
       strings.write_string(&builder, line)
@@ -521,7 +521,7 @@ rename_entry_main :: proc(source: string) -> string {
       after := strings.trim_left(trimmed[len("main"):], " \t")
       if strings.has_prefix(after, "::") {
         strings.write_string(&builder, indent)
-        strings.write_string(&builder, "probe_original_main")
+        strings.write_string(&builder, "olive_original_main")
         strings.write_string(&builder, trimmed[len("main"):])
       } else {
         strings.write_string(&builder, line)
@@ -597,7 +597,7 @@ comment_top_level_scratch_lines :: proc(source: string) -> string {
       !is_declaration_line(line)
     if should_comment {
       indent := line[:len(line)-len(strings.trim_left(line, " \t"))]
-      fmt.sbprintf(&builder, "%s/* probe scratch: %s */", indent, stripped)
+      fmt.sbprintf(&builder, "%s/* olive scratch: %s */", indent, stripped)
     } else {
       strings.write_string(&builder, line)
     }
@@ -619,7 +619,7 @@ comment_top_level_scratch_lines :: proc(source: string) -> string {
   return strings.clone(strings.to_string(builder))
 }
 
-copy_package_for_internal_probe :: proc(package_path, directory: string) -> (package_name: string, ok: bool) {
+copy_package_for_internal_olive :: proc(package_path, directory: string) -> (package_name: string, ok: bool) {
   _ = os.make_directory_all(directory)
   entries, read_err := os.read_directory_by_path(package_path, -1, context.allocator)
   if read_err != nil {
@@ -673,7 +673,7 @@ copy_package_for_internal_probe :: proc(package_path, directory: string) -> (pac
 }
 
 write_internal_runner :: proc(config: Config, directory: string) -> (path: string, ok: bool) {
-  package_name, package_ok := copy_package_for_internal_probe(config.package_path, directory)
+  package_name, package_ok := copy_package_for_internal_olive(config.package_path, directory)
   if !package_ok {
     return "", false
   }
@@ -682,7 +682,7 @@ write_internal_runner :: proc(config: Config, directory: string) -> (path: strin
   local_config.package_name = package_name
   output := render_internal_runner(local_config)
   defer delete(output)
-  joined, join_err := os.join_path({directory, "probe_runner.odin"}, context.allocator)
+  joined, join_err := os.join_path({directory, "olive_runner.odin"}, context.allocator)
   if join_err != nil {
     return "", false
   }
@@ -701,10 +701,10 @@ run_odin :: proc(action, runner_dir, working_dir: string) -> Run_Result {
   out_path := ""
   out_arg := ""
   if action == "run" || action == "build" {
-    dir, dir_err := os.make_directory_temp(runner_dir, "probe-bin-*", context.allocator)
+    dir, dir_err := os.make_directory_temp(runner_dir, "olive-bin-*", context.allocator)
     if dir_err == nil {
       out_dir = dir
-      joined, join_err := os.join_path({out_dir, "probe.bin"}, context.allocator)
+      joined, join_err := os.join_path({out_dir, "olive.bin"}, context.allocator)
       if join_err == nil {
         out_path = joined
       }

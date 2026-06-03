@@ -16,7 +16,7 @@ They generate ordinary Odin and use the real Odin compiler.
 Build the CLI:
 
 ```sh
-odin build cmd/probe -out:olive
+odin build cmd/olive -out:olive
 ```
 
 ## Hot Reload

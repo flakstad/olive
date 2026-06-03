@@ -11,7 +11,7 @@ the next request uses the new route logic.
 From the Olive repo root:
 
 ```sh
-odin build cmd/probe -out:olive
+odin build cmd/olive -out:olive
 odin run examples/hot_reload_http_server
 curl http://127.0.0.1:8099/status
 ```

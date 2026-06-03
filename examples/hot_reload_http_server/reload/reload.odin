@@ -1,7 +1,7 @@
 package reload
 
 import server ".."
-import probe_reload "../../../src/probe_reload"
+import olive_reload "../../../src/olive_reload"
 import "core:fmt"
 
 Server_State :: server.Server_State
@@ -19,7 +19,7 @@ on_unload :: proc(state: ^Server_State) {
     state.metrics.unloads += 1
 }
 
-run :: proc(state: ^Server_State, host: ^probe_reload.Run_Host) {
+run :: proc(state: ^Server_State, host: ^olive_reload.Run_Host) {
     _ = host
     server.serve_one(state)
 }

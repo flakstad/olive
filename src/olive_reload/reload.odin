@@ -1,4 +1,4 @@
-package probe_reload
+package olive_reload
 
 import "core:dynlib"
 import "core:fmt"
@@ -10,11 +10,11 @@ import "core:time"
 MANIFEST_API_VERSION :: u32(1)
 
 Core_Symbols :: struct {
-    api_version: ^u32 `dynlib:"probe_reload_api_version"`,
-    state_size:  proc "c" () -> int `dynlib:"probe_reload_state_size"`,
-    state_align: proc "c" () -> int `dynlib:"probe_reload_state_align"`,
-    on_load:     proc "c" (state: rawptr, is_reload: bool) `dynlib:"probe_reload_on_load"`,
-    on_unload:   proc "c" (state: rawptr) `dynlib:"probe_reload_on_unload"`,
+    api_version: ^u32 `dynlib:"olive_reload_api_version"`,
+    state_size:  proc "c" () -> int `dynlib:"olive_reload_state_size"`,
+    state_align: proc "c" () -> int `dynlib:"olive_reload_state_align"`,
+    on_load:     proc "c" (state: rawptr, is_reload: bool) `dynlib:"olive_reload_on_load"`,
+    on_unload:   proc "c" (state: rawptr) `dynlib:"olive_reload_on_unload"`,
     __handle:    dynlib.Library,
 }
 
@@ -66,11 +66,11 @@ library_write_time :: proc(path: string) -> (time.Time, bool) {
 
 shadow_library_path :: proc(path: string, generation: int) -> string {
     dir, file := os.split_path(path)
-    shadow_name := strings.clone(fmt.tprintf(".probe-reload-%d-%s", generation, file))
+    shadow_name := strings.clone(fmt.tprintf(".olive-reload-%d-%s", generation, file))
     defer delete(shadow_name)
     joined, err := os.join_path({dir, shadow_name}, context.allocator)
     if err != nil {
-        return strings.clone(fmt.tprintf("%s.probe-reload-%d-%s", dir, generation, file))
+        return strings.clone(fmt.tprintf("%s.olive-reload-%d-%s", dir, generation, file))
     }
     return joined
 }
@@ -132,7 +132,7 @@ cleanup_shadow_libraries :: proc(module_path: string) {
         return
     }
     for entry in entries {
-        if strings.contains(entry.name, ".probe-reload-") {
+        if strings.contains(entry.name, ".olive-reload-") {
             path, join_err := os.join_path({dir, entry.name}, context.temp_allocator)
             if join_err == nil {
                 _ = os.remove(path)

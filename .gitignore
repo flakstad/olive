@@ -1,4 +1,4 @@
-.probe/
-/probe
+.olive/
+/olive
 *.elc
 /.worktrees/

@@ -2,7 +2,7 @@ package main
 
 import "core:fmt"
 import "core:os"
-import probe "../../src/probe_core"
+import olive "../../src/olive_core"
 
 usage :: proc() {
     fmt.println("usage:")
@@ -22,7 +22,7 @@ usage :: proc() {
     fmt.println("  olive store rm <package> <name>")
 }
 
-print_result :: proc(result: probe.Run_Result) {
+print_result :: proc(result: olive.Run_Result) {
     if len(result.stdout) > 0 {
         fmt.print(result.stdout)
     }
@@ -124,7 +124,7 @@ parse_eval_command :: proc() -> int {
             runner_dir = abs_runner_dir
         }
     } else {
-        dir, dir_err := os.make_directory_temp("", "probe-*", context.allocator)
+        dir, dir_err := os.make_directory_temp("", "olive-*", context.allocator)
         if dir_err != nil {
             fmt.eprintln("failed to create temporary directory")
             return 1
@@ -140,7 +140,7 @@ parse_eval_command :: proc() -> int {
         delete(temp_dir)
     }
 
-    config := probe.Config{
+    config := olive.Config{
         package_path = target_package,
         code         = code,
         print_result = !no_print,
@@ -150,9 +150,9 @@ parse_eval_command :: proc() -> int {
     runner := ""
     ok := false
     if internal {
-        runner, ok = probe.write_internal_runner(config, runner_dir)
+        runner, ok = olive.write_internal_runner(config, runner_dir)
     } else {
-        runner, ok = probe.write_runner(config, runner_dir)
+        runner, ok = olive.write_runner(config, runner_dir)
     }
     if !ok {
         fmt.eprintln("failed to generate olive runner")
@@ -179,22 +179,22 @@ parse_eval_command :: proc() -> int {
         delete(data)
     }
 
-    result := probe.run_odin(action, runner_dir, target_package)
+    result := olive.run_odin(action, runner_dir, target_package)
     defer delete(transmute([]byte)result.stdout)
     defer delete(transmute([]byte)result.stderr)
     if save_name != "" && result.exit_code == 0 {
-        if !probe.valid_store_name(save_name) {
+        if !olive.valid_store_name(save_name) {
             fmt.eprintln("store name must contain only letters, digits, '_', '.', or '-'")
             return 2
         }
-        if !probe.save_value(target_package, save_name, result.stdout) {
+        if !olive.save_value(target_package, save_name, result.stdout) {
             fmt.eprintln("failed to save stored value")
             return 1
         }
     }
-    mapped_stderr := probe.remap_runner_output_locations(result.stderr, runner, code, !no_print, internal, len(imports))
+    mapped_stderr := olive.remap_runner_output_locations(result.stderr, runner, code, !no_print, internal, len(imports))
     defer delete(mapped_stderr)
-    print_result(probe.Run_Result{
+    print_result(olive.Run_Result{
         exit_code = result.exit_code,
         stdout    = result.stdout,
         stderr    = mapped_stderr,
@@ -221,7 +221,7 @@ parse_store_command :: proc() -> int {
             usage()
             return 2
         }
-        directory, ok := probe.store_dir(target_package)
+        directory, ok := olive.store_dir(target_package)
         if !ok {
             fmt.eprintln("failed to resolve store path")
             return 1
@@ -236,11 +236,11 @@ parse_store_command :: proc() -> int {
         }
         name := os.args[4]
         value := os.args[5]
-        if !probe.valid_store_name(name) {
+        if !olive.valid_store_name(name) {
             fmt.eprintln("store name must contain only letters, digits, '_', '.', or '-'")
             return 2
         }
-        if !probe.save_value(target_package, name, value) {
+        if !olive.save_value(target_package, name, value) {
             fmt.eprintln("failed to save stored value")
             return 1
         }
@@ -251,11 +251,11 @@ parse_store_command :: proc() -> int {
             return 2
         }
         name := os.args[4]
-        if !probe.valid_store_name(name) {
+        if !olive.valid_store_name(name) {
             fmt.eprintln("store name must contain only letters, digits, '_', '.', or '-'")
             return 2
         }
-        value, ok := probe.load_value(target_package, name)
+        value, ok := olive.load_value(target_package, name)
         if !ok {
             fmt.eprintln("stored value not found: ", name)
             return 1
@@ -268,8 +268,8 @@ parse_store_command :: proc() -> int {
             usage()
             return 2
         }
-        names := probe.list_values(target_package)
-        defer probe.delete_string_slice(names)
+        names := olive.list_values(target_package)
+        defer olive.delete_string_slice(names)
         for name in names {
             fmt.println(name)
         }
@@ -280,11 +280,11 @@ parse_store_command :: proc() -> int {
             return 2
         }
         name := os.args[4]
-        if !probe.valid_store_name(name) {
+        if !olive.valid_store_name(name) {
             fmt.eprintln("store name must contain only letters, digits, '_', '.', or '-'")
             return 2
         }
-        if !probe.remove_value(target_package, name) {
+        if !olive.remove_value(target_package, name) {
             fmt.eprintln("stored value not found: ", name)
             return 1
         }

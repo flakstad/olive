@@ -13,7 +13,7 @@ resident host.
 From the Olive repo root:
 
 ```sh
-odin build cmd/probe -out:olive
+odin build cmd/olive -out:olive
 odin run examples/hot_reload_raylib
 ./olive check examples/hot_reload_raylib/reload/reload.conf
 ./olive run examples/hot_reload_raylib/reload/reload.conf

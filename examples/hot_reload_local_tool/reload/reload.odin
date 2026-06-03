@@ -1,7 +1,7 @@
 package reload
 
 import tool ".."
-import probe_reload "../../../src/probe_reload"
+import olive_reload "../../../src/olive_reload"
 import "core:time"
 
 Tool_State :: tool.Tool_State
@@ -15,7 +15,7 @@ on_load :: proc(state: ^Tool_State) {
     state.report.summary = "code reloaded; durable subsystem state preserved"
 }
 
-run :: proc(state: ^Tool_State, host: ^probe_reload.Run_Host) {
+run :: proc(state: ^Tool_State, host: ^olive_reload.Run_Host) {
     _ = host
     tool.process_batch(state)
 

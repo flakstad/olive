@@ -17,7 +17,7 @@ odin run examples/hot_reload_local_tool
 Reload run:
 
 ```sh
-odin build cmd/probe -out:olive
+odin build cmd/olive -out:olive
 ./olive run examples/hot_reload_local_tool/reload/reload.conf
 ```
 
