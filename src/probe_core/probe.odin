@@ -732,28 +732,3 @@ run_odin :: proc(action, runner_dir, working_dir: string) -> Run_Result {
   }
   return Run_Result{exit_code = exit_code, stdout = string(stdout), stderr = string(stderr)}
 }
-
-run_odin_package :: proc(action, package_path: string, extra_args: []string) -> Run_Result {
-  args := make([dynamic]string, 0, 3+len(extra_args))
-  defer delete(args)
-  append(&args, "odin", action, package_path)
-  for arg in extra_args {
-    append(&args, arg)
-  }
-
-  process, start_err := os.process_start(os.Process_Desc{
-    command = args[:],
-    stdin   = os.stdin,
-    stdout  = os.stdout,
-    stderr  = os.stderr,
-  })
-  exit_code := 1
-  if start_err != nil {
-    return Run_Result{exit_code = exit_code}
-  }
-  state, wait_err := os.process_wait(process)
-  if wait_err == nil && state.exited {
-    exit_code = state.exit_code
-  }
-  return Run_Result{exit_code = exit_code}
-}

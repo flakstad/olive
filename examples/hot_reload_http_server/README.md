@@ -5,13 +5,13 @@ instead of a frame loop: production `main.odin` listens on
 `http://127.0.0.1:8099`, accepts requests, and calls reloadable routing logic.
 
 The reload adapter polls for one request and returns. The listener is
-nonblocking, so Probe can check for reloads even while the server is idle and
+nonblocking, so Olive can check for reloads even while the server is idle and
 the next request uses the new route logic.
 
-From the Probe repo root:
+From the Olive repo root:
 
 ```sh
-odin build cmd/probe -out:probe
+odin build cmd/probe -out:olive
 odin run examples/hot_reload_http_server
 curl http://127.0.0.1:8099/status
 ```
@@ -19,16 +19,16 @@ curl http://127.0.0.1:8099/status
 For reload:
 
 ```sh
-./probe reload run examples/hot_reload_http_server/reload/reload.conf
+./olive run examples/hot_reload_http_server/reload/reload.conf
 ```
 
 In another terminal:
 
 ```sh
-./probe reload watch examples/hot_reload_http_server/reload/reload.conf
+./olive watch examples/hot_reload_http_server/reload/reload.conf
 ```
 
-Edit `server.odin` and save. The watcher rebuilds the module, Probe reloads it
+Edit `server.odin` and save. The watcher rebuilds the module, Olive reloads it
 while idle, and the next `curl` request uses the new route logic. The server
 preserves request counters and route metrics across reloads. The listener is
 stored in durable state and is closed only when the process exits.

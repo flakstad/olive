@@ -528,59 +528,6 @@ compiled_cli_relative_keep_dir_runs_from_package_cwd :: proc(t: ^testing.T) {
 }
 
 @(test)
-compiled_cli_package_test :: proc(t: ^testing.T) {
-  root, dir_err := os.make_directory_temp("", "probe-cli-package-test-*", context.allocator)
-  testing.expect_value(t, dir_err == nil, true)
-  if dir_err != nil {
-    return
-  }
-  defer {
-    _ = os.remove_all(root)
-    delete(root)
-  }
-  binary, binary_ok := build_probe_binary(t, root)
-  if !binary_ok {
-    return
-  }
-  defer delete(binary)
-  pkg, pkg_ok := write_test_package(t, root)
-  if !pkg_ok {
-    return
-  }
-  defer delete(pkg)
-  result := exec([]string{binary, "test", pkg, "-define:ODIN_TEST_LOG_LEVEL=warning"})
-  defer delete_exec_result(result)
-  testing.expect_value(t, result.exit_code, 0)
-}
-
-@(test)
-compiled_cli_package_run_invokes_standard_main :: proc(t: ^testing.T) {
-  root, dir_err := os.make_directory_temp("", "probe-cli-package-run-test-*", context.allocator)
-  testing.expect_value(t, dir_err == nil, true)
-  if dir_err != nil {
-    return
-  }
-  defer {
-    _ = os.remove_all(root)
-    delete(root)
-  }
-  binary, binary_ok := build_probe_binary(t, root)
-  if !binary_ok {
-    return
-  }
-  defer delete(binary)
-  pkg, pkg_ok := write_main_package(t, root)
-  if !pkg_ok {
-    return
-  }
-  defer delete(pkg)
-  result := exec([]string{binary, "run", pkg})
-  defer delete_exec_result(result)
-  testing.expect_value(t, result.exit_code, 0)
-  testing.expect_value(t, strings.trim_space(result.stdout), "3")
-}
-
-@(test)
 compiled_cli_reload_init_build_and_rebuild :: proc(t: ^testing.T) {
   root, dir_err := os.make_directory_temp("", "probe-cli-reload-test-*", context.allocator)
   testing.expect_value(t, dir_err == nil, true)
@@ -603,7 +550,7 @@ compiled_cli_reload_init_build_and_rebuild :: proc(t: ^testing.T) {
   }
   defer delete(app_dir)
 
-  init_result := exec([]string{binary, "reload", "init", app_dir})
+  init_result := exec([]string{binary, "init", app_dir})
   defer delete_exec_result(init_result)
   testing.expect_value(t, init_result.exit_code, 0)
 
@@ -615,12 +562,12 @@ compiled_cli_reload_init_build_and_rebuild :: proc(t: ^testing.T) {
   defer delete(config_path)
   testing.expect_value(t, os.exists(config_path), true)
 
-  check_result := exec([]string{binary, "reload", "check", config_path})
+  check_result := exec([]string{binary, "check", config_path})
   defer delete_exec_result(check_result)
   testing.expect_value(t, check_result.exit_code, 0)
   testing.expect_value(t, strings.contains(check_result.stdout, "config ok"), true)
 
-  paths_result := exec([]string{binary, "reload", "paths", config_path})
+  paths_result := exec([]string{binary, "paths", config_path})
   defer delete_exec_result(paths_result)
   testing.expect_value(t, paths_result.exit_code, 0)
   testing.expect_value(t, strings.contains(paths_result.stdout, "module_binary:"), true)
@@ -629,7 +576,7 @@ compiled_cli_reload_init_build_and_rebuild :: proc(t: ^testing.T) {
   testing.expect_value(t, strings.contains(paths_result.stdout, "watch_debounce_ms:"), true)
   testing.expect_value(t, strings.contains(paths_result.stdout, "watch_command:"), true)
 
-  json_paths_result := exec([]string{binary, "reload", "paths", config_path, "--json"})
+  json_paths_result := exec([]string{binary, "paths", config_path, "--json"})
   defer delete_exec_result(json_paths_result)
   testing.expect_value(t, json_paths_result.exit_code, 0)
   testing.expect_value(t, strings.contains(json_paths_result.stdout, `"module_binary"`), true)
@@ -638,11 +585,7 @@ compiled_cli_reload_init_build_and_rebuild :: proc(t: ^testing.T) {
   testing.expect_value(t, strings.contains(json_paths_result.stdout, `"watch_debounce_ms"`), true)
   testing.expect_value(t, strings.contains(json_paths_result.stdout, `"watch_command"`), true)
 
-  build_result := exec([]string{binary, "reload", "build", config_path})
-  defer delete_exec_result(build_result)
-  testing.expect_value(t, build_result.exit_code, 0)
-
-  rebuild_result := exec([]string{binary, "reload", "rebuild", config_path})
+  rebuild_result := exec([]string{binary, "rebuild", config_path})
   defer delete_exec_result(rebuild_result)
   testing.expect_value(t, rebuild_result.exit_code, 0)
 
@@ -671,7 +614,7 @@ generated_dir=.probe/bad-run/generated
 build_dir=.probe/bad-run/build
 `, runtime_path)
     testing.expect_value(t, os.write_entire_file_from_string(bad_run_config_path, bad_run_config) == nil, true)
-    bad_run_result := exec([]string{binary, "reload", "check", bad_run_config_path})
+    bad_run_result := exec([]string{binary, "check", bad_run_config_path})
     defer delete_exec_result(bad_run_result)
     testing.expect_value(t, bad_run_result.exit_code, 1)
     testing.expect_value(t, strings.contains(bad_run_result.stdout, "checking generated reload module"), true)
@@ -688,7 +631,7 @@ state=Program_State
 run=run
 `
     testing.expect_value(t, os.write_entire_file_from_string(bad_config_path, bad_config) == nil, true)
-    bad_check_result := exec([]string{binary, "reload", "check", bad_config_path})
+    bad_check_result := exec([]string{binary, "check", bad_config_path})
     defer delete_exec_result(bad_check_result)
     testing.expect_value(t, bad_check_result.exit_code, 1)
     testing.expect_value(t, strings.contains(bad_check_result.stderr, "package path is not a directory"), true)
@@ -719,13 +662,13 @@ watch=reload
 watch_debounce_ms=nope
 `, runtime_path)
     testing.expect_value(t, os.write_entire_file_from_string(bad_debounce_config_path, bad_debounce_config) == nil, true)
-    bad_debounce_result := exec([]string{binary, "reload", "check", bad_debounce_config_path})
+    bad_debounce_result := exec([]string{binary, "check", bad_debounce_config_path})
     defer delete_exec_result(bad_debounce_result)
     testing.expect_value(t, bad_debounce_result.exit_code, 1)
     testing.expect_value(t, strings.contains(bad_debounce_result.stderr, "watch_debounce_ms must be an integer"), true)
   }
 
-  clean_result := exec([]string{binary, "reload", "clean", config_path})
+  clean_result := exec([]string{binary, "clean", config_path})
   defer delete_exec_result(clean_result)
   testing.expect_value(t, clean_result.exit_code, 0)
 

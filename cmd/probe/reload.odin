@@ -31,15 +31,14 @@ Reload_Config :: struct {
 
 reload_usage :: proc() {
     fmt.println("usage:")
-    fmt.println("  probe reload init <dir>")
-    fmt.println("  probe reload generate <reload.conf>")
-    fmt.println("  probe reload check <reload.conf>")
-    fmt.println("  probe reload build <reload.conf>")
-    fmt.println("  probe reload run <reload.conf> [--json]")
-    fmt.println("  probe reload rebuild <reload.conf>")
-    fmt.println("  probe reload watch <reload.conf>")
-    fmt.println("  probe reload paths <reload.conf> [--json]")
-    fmt.println("  probe reload clean <reload.conf>")
+    fmt.println("  olive init <dir>")
+    fmt.println("  olive generate <reload.conf>")
+    fmt.println("  olive check <reload.conf>")
+    fmt.println("  olive run <reload.conf> [--json]")
+    fmt.println("  olive rebuild <reload.conf>")
+    fmt.println("  olive watch <reload.conf>")
+    fmt.println("  olive paths <reload.conf> [--json]")
+    fmt.println("  olive clean <reload.conf>")
 }
 
 trim :: proc(value: string) -> string {
@@ -147,7 +146,7 @@ read_reload_config :: proc(path: string) -> (Reload_Config, string, bool) {
         return cfg, strings.clone("config requires run=<proc>"), false
     }
     if cfg.layout_policy != "reject" {
-        return cfg, strings.clone("on_layout_change currently supports only reject; state layout changes require restarting `probe reload run`; `probe reload watch` can stay running"), false
+        return cfg, strings.clone("on_layout_change currently supports only reject; state layout changes require restarting `olive run`; `olive watch` can stay running"), false
     }
     if cfg.watch_paths == "" {
         cfg.watch_paths = strings.clone(cfg.package_path)
@@ -386,10 +385,9 @@ print_reload_paths :: proc(config_path: string, json := false) {
         print_json_field("watch", cfg.watch_paths)
         print_json_field("watch_debounce_ms", cfg.watch_debounce_ms)
         print_json_field("odin_args", cfg.odin_args)
-        print_json_field("build_command", fmt.tprintf("probe reload build %s", config_path))
-        print_json_field("run_command", fmt.tprintf("probe reload run %s", config_path))
-        print_json_field("watch_command", fmt.tprintf("probe reload watch %s", config_path))
-        print_json_field("rebuild_command", fmt.tprintf("probe reload rebuild %s", config_path), false)
+        print_json_field("run_command", fmt.tprintf("olive run %s", config_path))
+        print_json_field("watch_command", fmt.tprintf("olive watch %s", config_path))
+        print_json_field("rebuild_command", fmt.tprintf("olive rebuild %s", config_path), false)
         fmt.println("}")
         return
     }
@@ -406,10 +404,9 @@ print_reload_paths :: proc(config_path: string, json := false) {
     fmt.printf("watch: %s\n", cfg.watch_paths)
     fmt.printf("watch_debounce_ms: %s\n", cfg.watch_debounce_ms)
     fmt.printf("odin_args: %s\n", cfg.odin_args)
-    fmt.printf("build_command: probe reload build %s\n", config_path)
-    fmt.printf("run_command: probe reload run %s\n", config_path)
-    fmt.printf("watch_command: probe reload watch %s\n", config_path)
-    fmt.printf("rebuild_command: probe reload rebuild %s\n", config_path)
+    fmt.printf("run_command: olive run %s\n", config_path)
+    fmt.printf("watch_command: olive watch %s\n", config_path)
+    fmt.printf("rebuild_command: olive rebuild %s\n", config_path)
 }
 
 remove_path_if_exists :: proc(path: string) -> bool {
@@ -618,34 +615,34 @@ reload_check :: proc(config_path: string) -> int {
 
     _, paths = reload_generate_or_exit(config_path, true)
 
-    fmt.printf("[probe reload] checking generated reload module: %s\n", paths.module_dir)
+    fmt.printf("[olive] checking generated reload module: %s\n", paths.module_dir)
     module_check_args := make([dynamic]string)
     defer delete(module_check_args)
     append(&module_check_args, "odin", "check", paths.module_dir, "-no-entry-point")
     append_odin_args(&module_check_args, cfg)
     module_status := exec_or_exit(module_check_args[:])
     if module_status != 0 {
-        fmt.eprintln("[probe reload] reload module check failed")
+        fmt.eprintln("[olive] reload module check failed")
         return module_status
     }
 
-    fmt.printf("[probe reload] checking generated host: %s\n", paths.host_dir)
+    fmt.printf("[olive] checking generated host: %s\n", paths.host_dir)
     host_check_args := make([dynamic]string)
     defer delete(host_check_args)
     append(&host_check_args, "odin", "check", paths.host_dir)
     append_odin_args(&host_check_args, cfg)
     host_status := exec_or_exit(host_check_args[:])
     if host_status != 0 {
-        fmt.eprintln("[probe reload] host check failed")
+        fmt.eprintln("[olive] host check failed")
         return host_status
     }
 
-    fmt.printf("[probe reload] config ok: %s\n", config_path)
-    fmt.printf("[probe reload] package: %s\n", reload_package_path)
-    fmt.printf("[probe reload] runtime: %s\n", runtime_path)
-    fmt.printf("[probe reload] run: %s\n", cfg.run_name)
-    fmt.printf("[probe reload] watch: %s\n", cfg.watch_paths)
-    fmt.printf("[probe reload] module: %s\n", paths.module_binary)
+    fmt.printf("[olive] config ok: %s\n", config_path)
+    fmt.printf("[olive] package: %s\n", reload_package_path)
+    fmt.printf("[olive] runtime: %s\n", runtime_path)
+    fmt.printf("[olive] run: %s\n", cfg.run_name)
+    fmt.printf("[olive] watch: %s\n", cfg.watch_paths)
+    fmt.printf("[olive] module: %s\n", paths.module_binary)
     return 0
 }
 
@@ -774,9 +771,9 @@ reload_watch :: proc(config_path: string) -> int {
         return 1
     }
     if status == 0 {
-        fmt.printf("[probe reload] watching: %s\n", cfg.watch_paths)
+        fmt.printf("[olive] watching: %s\n", cfg.watch_paths)
     } else {
-        fmt.printf("[probe reload] initial build failed; watching for changes: %s\n", cfg.watch_paths)
+        fmt.printf("[olive] initial build failed; watching for changes: %s\n", cfg.watch_paths)
     }
 
     debounce := watch_debounce_duration(cfg)
@@ -795,19 +792,19 @@ reload_watch :: proc(config_path: string) -> int {
         if settled_found {
             last_write = settled_write
         }
-        fmt.println("[probe reload] change detected; rebuilding module")
+        fmt.println("[olive] change detected; rebuilding module")
         _, _, rebuild_status := reload_build_status_or_exit(config_path, false, true)
         if rebuild_status == 0 {
-            fmt.println("[probe reload] rebuild ok")
+            fmt.println("[olive] rebuild ok")
         } else {
-            fmt.printf("[probe reload] rebuild failed exit=%d; still watching\n", rebuild_status)
+            fmt.printf("[olive] rebuild failed exit=%d; still watching\n", rebuild_status)
         }
     }
     return 0
 }
 
 probe_reload_runtime_path_or_exit :: proc(from_dir: string) -> string {
-    if override, found := os.lookup_env("PROBE_RELOAD_RUNTIME", context.allocator); found {
+    if override, found := os.lookup_env("OLIVE_RELOAD_RUNTIME", context.allocator); found {
         return override
     }
 
@@ -831,7 +828,7 @@ probe_reload_runtime_path_or_exit :: proc(from_dir: string) -> string {
         delete(candidate)
     }
 
-    fmt.eprintln("could not find Probe reload runtime; set PROBE_RELOAD_RUNTIME=/path/to/probe/src/probe_reload")
+    fmt.eprintln("could not find Olive reload runtime; set OLIVE_RELOAD_RUNTIME=/path/to/olive/src/probe_reload")
     os.exit(1)
 }
 
@@ -907,18 +904,18 @@ run :: proc(state: ^Program_State, host: ^probe_reload.Run_Host) {
 }
 `)
     reload_source := strings.to_string(reload_builder)
-    config_source := fmt.tprintf(`# Probe hot reload config.
+    config_source := fmt.tprintf(`# Olive hot reload config.
 #
 # package: reload adapter package. Relative paths are relative to this config file.
 package=.
 #
-# runtime: Probe reload runtime package. probe reload init fills this in.
+# runtime: Olive reload runtime package. olive init fills this in.
 runtime=%s
 #
 # state: one durable root state type owned by the resident host.
 state=Program_State
 #
-# run: reloadable entry point. Probe calls it repeatedly and checks for reloads between calls.
+# run: reloadable entry point. Olive calls it repeatedly and checks for reloads between calls.
 run=run
 #
 # init: optional. Called once for the first load.
@@ -941,8 +938,8 @@ on_load=on_load
 # host_init=host_init
 # host_shutdown=host_shutdown
 #
-# on_layout_change: currently only reject. State layout changes require restarting probe reload run.
-# Any probe reload watch process can stay running.
+# on_layout_change: currently only reject. State layout changes require restarting olive run.
+# Any olive watch process can stay running.
 on_layout_change=reject
 #
 # module_name: basename for generated host/module binaries.
@@ -970,83 +967,76 @@ build_dir=../.probe/reload/build
 }
 
 parse_reload_command :: proc() -> int {
-    if len(os.args) < 3 {
+    if len(os.args) < 2 {
         reload_usage()
         return 2
     }
-    switch os.args[2] {
+    switch os.args[1] {
     case "init":
-        if len(os.args) != 4 {
+        if len(os.args) != 3 {
             reload_usage()
             return 2
         }
-        reload_init_program(os.args[3])
+        reload_init_program(os.args[2])
         return 0
     case "generate":
-        if len(os.args) != 4 {
+        if len(os.args) != 3 {
             reload_usage()
             return 2
         }
-        _, _ = reload_generate_or_exit(os.args[3])
+        _, _ = reload_generate_or_exit(os.args[2])
         return 0
     case "check":
-        if len(os.args) != 4 {
+        if len(os.args) != 3 {
             reload_usage()
             return 2
         }
-        return reload_check(os.args[3])
-    case "build":
-        if len(os.args) != 4 {
-            reload_usage()
-            return 2
-        }
-        _, _ = reload_build_or_exit(os.args[3], true)
-        return 0
+        return reload_check(os.args[2])
     case "rebuild":
-        if len(os.args) != 4 {
+        if len(os.args) != 3 {
             reload_usage()
             return 2
         }
-        _, _ = reload_build_or_exit(os.args[3], false)
+        _, _ = reload_build_or_exit(os.args[2], false)
         return 0
     case "watch":
-        if len(os.args) != 4 {
+        if len(os.args) != 3 {
             reload_usage()
             return 2
         }
-        return reload_watch(os.args[3])
+        return reload_watch(os.args[2])
     case "paths":
-        if len(os.args) != 4 && len(os.args) != 5 {
+        if len(os.args) != 3 && len(os.args) != 4 {
             reload_usage()
             return 2
         }
         json := false
-        if len(os.args) == 5 {
-            if os.args[4] != "--json" {
+        if len(os.args) == 4 {
+            if os.args[3] != "--json" {
                 reload_usage()
                 return 2
             }
             json = true
         }
-        print_reload_paths(os.args[3], json)
+        print_reload_paths(os.args[2], json)
         return 0
     case "clean":
-        if len(os.args) != 4 {
+        if len(os.args) != 3 {
             reload_usage()
             return 2
         }
-        return clean_reload_paths(os.args[3])
+        return clean_reload_paths(os.args[2])
     case "run":
-        if len(os.args) != 4 && len(os.args) != 5 {
+        if len(os.args) != 3 && len(os.args) != 4 {
             reload_usage()
             return 2
         }
         host_args := make([dynamic]string)
         defer delete(host_args)
-        _, paths := reload_build_or_exit(os.args[3], true)
+        _, paths := reload_build_or_exit(os.args[2], true)
         append(&host_args, paths.host_binary)
-        if len(os.args) == 5 {
-            if os.args[4] != "--json" {
+        if len(os.args) == 4 {
+            if os.args[3] != "--json" {
                 reload_usage()
                 return 2
             }

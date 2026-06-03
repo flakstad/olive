@@ -6,17 +6,20 @@ import probe "../../src/probe_core"
 
 usage :: proc() {
     fmt.println("usage:")
-    fmt.println("  probe run <package> [odin args...]")
-    fmt.println("  probe build <package> [odin args...]")
-    fmt.println("  probe check <package> [odin args...]")
-    fmt.println("  probe test <package> [odin args...]")
-    fmt.println("  probe eval <package> <code> [--check] [--no-print] [--show] [--generated file] [--internal] [--keep-dir dir] [--import line]")
-    fmt.println("  probe reload <init|generate|build|run|rebuild> ...")
-    fmt.println("  probe store path <package>")
-    fmt.println("  probe store save <package> <name> <value>")
-    fmt.println("  probe store load <package> <name>")
-    fmt.println("  probe store list <package>")
-    fmt.println("  probe store rm <package> <name>")
+    fmt.println("  olive init <dir>")
+    fmt.println("  olive generate <reload.conf>")
+    fmt.println("  olive check <reload.conf>")
+    fmt.println("  olive run <reload.conf> [--json]")
+    fmt.println("  olive rebuild <reload.conf>")
+    fmt.println("  olive watch <reload.conf>")
+    fmt.println("  olive paths <reload.conf> [--json]")
+    fmt.println("  olive clean <reload.conf>")
+    fmt.println("  olive eval <package> <code> [--check] [--no-print] [--show] [--generated file] [--internal] [--keep-dir dir] [--import line] [--save name]")
+    fmt.println("  olive store path <package>")
+    fmt.println("  olive store save <package> <name> <value>")
+    fmt.println("  olive store load <package> <name>")
+    fmt.println("  olive store list <package>")
+    fmt.println("  olive store rm <package> <name>")
 }
 
 print_result :: proc(result: probe.Run_Result) {
@@ -152,7 +155,7 @@ parse_eval_command :: proc() -> int {
         runner, ok = probe.write_runner(config, runner_dir)
     }
     if !ok {
-        fmt.eprintln("failed to generate probe runner")
+        fmt.eprintln("failed to generate olive runner")
         return 2
     }
     defer delete(runner)
@@ -196,24 +199,6 @@ parse_eval_command :: proc() -> int {
         stdout    = result.stdout,
         stderr    = mapped_stderr,
     })
-    return result.exit_code
-}
-
-parse_odin_command :: proc(action: string) -> int {
-    if len(os.args) < 3 {
-        usage()
-        return 2
-    }
-    target_package := os.args[2]
-    if !os.exists(target_package) {
-        fmt.eprintln("package path does not exist: ", target_package)
-        return 2
-    }
-    extra_args := os.args[3:]
-    result := probe.run_odin_package(action, target_package, extra_args)
-    defer delete(transmute([]byte)result.stdout)
-    defer delete(transmute([]byte)result.stderr)
-    print_result(result)
     return result.exit_code
 }
 
@@ -317,18 +302,10 @@ main :: proc() {
     }
 
     switch os.args[1] {
-    case "run":
-        os.exit(parse_odin_command("run"))
-    case "build":
-        os.exit(parse_odin_command("build"))
-    case "check":
-        os.exit(parse_odin_command("check"))
-    case "test":
-        os.exit(parse_odin_command("test"))
+    case "init", "generate", "check", "run", "rebuild", "watch", "paths", "clean":
+        os.exit(parse_reload_command())
     case "eval":
         os.exit(parse_eval_command())
-    case "reload":
-        os.exit(parse_reload_command())
     case "store":
         os.exit(parse_store_command())
     case "-h", "--help", "help":

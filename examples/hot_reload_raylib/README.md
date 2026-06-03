@@ -1,35 +1,35 @@
 # Hot Reload Raylib
 
-This is a small Raylib game-shaped example using Probe hot reload. Production
+This is a small Raylib game-shaped example using Olive hot reload. Production
 code is normal Odin: `main.odin` opens the window, owns the process lifetime,
 and calls `frame(&state)` until Raylib says the window should close.
 
 The reload workflow is isolated to `reload/reload.odin`. Its `run` proc draws
-one frame and returns; Probe checks for reloads between frames. Because the
+one frame and returns; Olive checks for reloads between frames. Because the
 reload host does not execute production `main.odin`, the reload adapter uses
 `host_init`/`host_shutdown` to initialize the Raylib window once in the
 resident host.
 
-From the Probe repo root:
+From the Olive repo root:
 
 ```sh
-odin build cmd/probe -out:probe
+odin build cmd/probe -out:olive
 odin run examples/hot_reload_raylib
-./probe reload check examples/hot_reload_raylib/reload/reload.conf
-./probe reload run examples/hot_reload_raylib/reload/reload.conf
+./olive check examples/hot_reload_raylib/reload/reload.conf
+./olive run examples/hot_reload_raylib/reload/reload.conf
 ```
 
 In another terminal, edit `examples/hot_reload_raylib/game.odin`, then rebuild
 only the reloadable module:
 
 ```sh
-./probe reload rebuild examples/hot_reload_raylib/reload/reload.conf
+./olive rebuild examples/hot_reload_raylib/reload/reload.conf
 ```
 
 Or keep the rebuild watcher running:
 
 ```sh
-./probe reload watch examples/hot_reload_raylib/reload/reload.conf
+./olive watch examples/hot_reload_raylib/reload/reload.conf
 ```
 
 The example keeps durable state in `Game_State`, composed from input, player,

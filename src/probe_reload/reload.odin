@@ -179,7 +179,7 @@ load_core :: proc(path: string, state: rawptr, state_size, state_align: int, gen
     layout_changed := core.state_size() != state_size || core.state_align() != state_align
     if layout_changed {
         unload_core(&core, nil)
-        return {}, {}, strings.clone("reload state layout changed; stop and restart `probe reload run`. Any `probe reload watch` process can stay running."), false
+        return {}, {}, strings.clone("reload state layout changed; stop and restart `olive run`. Any `olive watch` process can stay running."), false
     }
 
     write_time, time_ok := library_write_time(path)
@@ -268,13 +268,13 @@ poll_session :: proc(session: ^Session, app_symbols: ^$T, state: ^$S, init_state
 default_event_handler :: proc(event: Reload_Event) {
     switch event.kind {
     case .Started:
-        fmt.printf("[probe reload] started generation=%d\n", event.generation)
+        fmt.printf("[olive] started generation=%d\n", event.generation)
     case .Reloaded:
-        fmt.printf("[probe reload] reloaded generation=%d\n", event.generation)
+        fmt.printf("[olive] reloaded generation=%d\n", event.generation)
     case .Restarted:
-        fmt.printf("[probe reload] restarted generation=%d: %s\n", event.generation, event.message)
+        fmt.printf("[olive] restarted generation=%d: %s\n", event.generation, event.message)
     case .Reload_Failed:
-        fmt.eprintf("[probe reload] reload failed: %s\n", event.message)
+        fmt.eprintf("[olive] reload failed: %s\n", event.message)
     }
 }
 
@@ -315,7 +315,7 @@ write_json_string :: proc(builder: ^strings.Builder, value: string) {
 json_event_handler :: proc(event: Reload_Event) {
     b := strings.builder_make()
     defer strings.builder_destroy(&b)
-    strings.write_string(&b, `PROBE_RELOAD_EVENT	{`)
+    strings.write_string(&b, `OLIVE_RELOAD_EVENT	{`)
     strings.write_string(&b, `"kind":`)
     write_json_string(&b, event_kind_name(event.kind))
     fmt.sbprintf(&b, `,"generation":%d`, event.generation)

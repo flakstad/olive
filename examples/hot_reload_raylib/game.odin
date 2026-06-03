@@ -188,7 +188,7 @@ draw :: proc(state: ^Game_State) {
   ray.DrawRectangleRec(player_rect, ray.Color{82, 170, 255, 255})
   ray.DrawRectangleLinesEx(player_rect, 2, ray.WHITE)
 
-  ray.DrawText("Probe Raylib Hot Reload", 32, 16, 24, ray.RAYWHITE)
+  ray.DrawText("Olive Raylib Hot Reload", 32, 16, 24, ray.RAYWHITE)
   ray.DrawText("WASD/arrows move   Space fires   R resets state   Esc exits", 32, WINDOW_HEIGHT - 36, 18, ray.LIGHTGRAY)
   ray.DrawText(ray.TextFormat("score %04d", state.hud.score), 720, 18, 22, ray.RAYWHITE)
   ray.DrawText(ray.TextFormat("reloads %d  resets %d", state.hud.reloads, state.hud.resets), 720, 44, 18, ray.LIGHTGRAY)

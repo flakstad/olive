@@ -6,14 +6,14 @@ cd "$ROOT"
 
 odin check cmd/probe
 odin test tests -define:ODIN_TEST_LOG_LEVEL=warning
-emacs -Q --batch -f batch-byte-compile emacs/probe.el
-rm -f emacs/probe.elc
+emacs -Q --batch -f batch-byte-compile emacs/olive.el
+rm -f emacs/olive.elc
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-probe_bin="$tmp/probe"
-odin build cmd/probe "-out:$probe_bin"
+olive_bin="$tmp/olive"
+odin build cmd/probe "-out:$olive_bin"
 
 pkg="$tmp/sample"
 mkdir -p "$pkg"
@@ -36,7 +36,7 @@ expected=(10 1500 17 2 2)
 pids=()
 
 for i in "${!codes[@]}"; do
-  "$probe_bin" eval "$pkg" "${codes[$i]}" >"$tmp/out-$i" 2>"$tmp/err-$i" &
+  "$olive_bin" eval "$pkg" "${codes[$i]}" >"$tmp/out-$i" 2>"$tmp/err-$i" &
   pids+=("$!")
 done
 
@@ -47,7 +47,7 @@ done
 for i in "${!expected[@]}"; do
   actual="$(tr -d '\r\n' < "$tmp/out-$i")"
   if [[ "$actual" != "${expected[$i]}" ]]; then
-    echo "parallel probe $i expected ${expected[$i]}, got '$actual'" >&2
+    echo "parallel olive $i expected ${expected[$i]}, got '$actual'" >&2
     if [[ -s "$tmp/err-$i" ]]; then
       cat "$tmp/err-$i" >&2
     fi
@@ -55,4 +55,4 @@ for i in "${!expected[@]}"; do
   fi
 done
 
-echo "parallel probe repro returned: ${expected[*]}"
+echo "parallel olive repro returned: ${expected[*]}"

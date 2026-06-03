@@ -17,14 +17,14 @@ odin run examples/hot_reload_local_tool
 Reload run:
 
 ```sh
-odin build cmd/probe -out:probe
-./probe reload run examples/hot_reload_local_tool/reload/reload.conf
+odin build cmd/probe -out:olive
+./olive run examples/hot_reload_local_tool/reload/reload.conf
 ```
 
 In another terminal:
 
 ```sh
-./probe reload watch examples/hot_reload_local_tool/reload/reload.conf
+./olive watch examples/hot_reload_local_tool/reload/reload.conf
 ```
 
 Edit `tool.odin` to change parsing/reporting behavior. The durable parser,
