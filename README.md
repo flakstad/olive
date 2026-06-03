@@ -34,8 +34,9 @@ cd scratch
 ../olive watch
 ```
 
-Now edit the generated Odin files. Olive builds the changed code and reloads it
-into the running program without resetting its durable state.
+Now edit the printed text in `main.odin`. Olive builds the changed code and
+reloads it into the running program without resetting its durable state, so the
+tick counter keeps going.
 
 ## Hot Reload
 
@@ -68,11 +69,16 @@ odin run .
 ../olive run
 ```
 
-`olive init` creates a small ordinary Odin program plus a `reload` directory. The
-ordinary program has `main.odin`, `state.odin`, and a small update proc. The
+`olive init` creates a small ordinary Odin program plus a `reload` directory.
+The ordinary program lives in `main.odin`: it has a durable state type, an
+update proc that prints once per second, and a normal production `main`. The
 reload directory contains `reload.odin`, which adapts that program to Olive's
 development host, and `reload.conf`, which tells Olive what package to build,
 what state type to preserve, and where to put generated files.
+
+For the starter, treat `reload/reload.odin` as generated wiring. Edit
+`main.odin` and leave the reload package alone unless you are changing how the
+development host connects to your program.
 
 The reload adapter contains the development entry point. Its `run` proc is what
 Olive calls while the host is alive. In the generated starter that proc advances
@@ -88,10 +94,13 @@ Add Olive to an existing project:
 1. Keep your existing `main` proc as the production entry point.
 2. Put durable program data in one root state type, for example
    `Program_State`.
-3. Add a `reload/reload.odin` adapter package that imports your program package
-   and exposes a `run(state, host)` proc.
-4. Add `reload/reload.conf`, or start with `olive init` in a temporary directory
-   and copy the shape from its generated `reload` files.
+3. Add a small `reload` directory that wires Olive to your program. Start with
+   `olive init` in a temporary directory and copy the generated `reload` shape.
+4. Point `reload/reload.conf` at your program package, state type, and update
+   proc.
+
+After that setup, normal iteration should happen in your program files, not in
+the reload package.
 
 Then run the development host from the project root:
 

@@ -848,10 +848,6 @@ reload_init_program :: proc(dir: string) {
     reload_dir := join_or_exit([]string{dir, "reload"})
     defer delete(reload_dir)
     ensure_directory_or_exit(reload_dir)
-    state_file := join_or_exit([]string{dir, "state.odin"})
-    defer delete(state_file)
-    game_file := join_or_exit([]string{dir, "game.odin"})
-    defer delete(game_file)
     main_file := join_or_exit([]string{dir, "main.odin"})
     defer delete(main_file)
     reload_file := join_or_exit([]string{reload_dir, "reload.odin"})
@@ -865,13 +861,14 @@ reload_init_program :: proc(dir: string) {
     root_import := relative_import_or_exit(reload_dir, dir)
     defer delete(root_import)
 
-    state_source := `package main
+    main_source := `package main
+
+import "core:fmt"
+import "core:time"
 
 Program_State :: struct {
     ticks: int,
 }
-`
-    game_source := `package main
 
 init :: proc(state: ^Program_State) {
     state.ticks = 0
@@ -879,15 +876,15 @@ init :: proc(state: ^Program_State) {
 
 tick :: proc(state: ^Program_State) {
     state.ticks += 1
+    fmt.printf("tick %d: edit main.odin and change this text\n", state.ticks)
+    time.sleep(time.Second)
 }
-`
-    main_source := `package main
 
 main :: proc() {
     state := Program_State{}
     init(&state)
 
-    for _ in 0..<10 {
+    for {
         tick(&state)
     }
 }
@@ -969,8 +966,6 @@ watch_debounce_ms=150
 generated_dir=../.olive/reload/generated
 build_dir=../.olive/reload/build
 `, runtime_config_path)
-    write_file_or_exit(state_file, state_source)
-    write_file_or_exit(game_file, game_source)
     write_file_or_exit(main_file, main_source)
     write_file_or_exit(reload_file, reload_source)
     write_file_or_exit(config_file, config_source)

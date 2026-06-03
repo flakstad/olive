@@ -561,6 +561,24 @@ compiled_cli_reload_init_check_and_build :: proc(t: ^testing.T) {
   }
   defer delete(config_path)
   testing.expect_value(t, os.exists(config_path), true)
+  main_path, main_join_err := os.join_path({app_dir, "main.odin"}, context.allocator)
+  testing.expect_value(t, main_join_err == nil, true)
+  if main_join_err == nil {
+    defer delete(main_path)
+    testing.expect_value(t, os.exists(main_path), true)
+  }
+  state_path, state_join_err := os.join_path({app_dir, "state.odin"}, context.allocator)
+  testing.expect_value(t, state_join_err == nil, true)
+  if state_join_err == nil {
+    defer delete(state_path)
+    testing.expect_value(t, os.exists(state_path), false)
+  }
+  game_path, game_join_err := os.join_path({app_dir, "game.odin"}, context.allocator)
+  testing.expect_value(t, game_join_err == nil, true)
+  if game_join_err == nil {
+    defer delete(game_path)
+    testing.expect_value(t, os.exists(game_path), false)
+  }
 
   check_result := exec([]string{binary, "check", config_path})
   defer delete_exec_result(check_result)
@@ -591,20 +609,9 @@ compiled_cli_reload_init_check_and_build :: proc(t: ^testing.T) {
   defer delete_exec_result(build_result)
   testing.expect_value(t, build_result.exit_code, 0)
 
-  previous_cwd, previous_cwd_err := os.get_working_directory(context.allocator)
-  testing.expect_value(t, previous_cwd_err == nil, true)
-  if previous_cwd_err != nil {
-    return
-  }
-  defer delete(previous_cwd)
-  chdir_err := os.set_working_directory(app_dir)
-  testing.expect_value(t, chdir_err == nil, true)
-  if chdir_err == nil {
-    default_build_result := exec([]string{binary, "build"})
-    defer delete_exec_result(default_build_result)
-    testing.expect_value(t, default_build_result.exit_code, 0)
-    _ = os.set_working_directory(previous_cwd)
-  }
+  default_build_result := exec([]string{binary, "build"}, app_dir)
+  defer delete_exec_result(default_build_result)
+  testing.expect_value(t, default_build_result.exit_code, 0)
 
   bad_run_config_path, bad_run_config_join_err := os.join_path({app_dir, "bad-run.reload.conf"}, context.allocator)
   testing.expect_value(t, bad_run_config_join_err == nil, true)

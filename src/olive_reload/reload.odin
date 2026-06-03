@@ -224,7 +224,7 @@ finish_session :: proc(session: ^Session) {
 poll_session :: proc(session: ^Session, app_symbols: ^$T, state: ^$S, init_state: proc(^S) = nil) -> (Reload_Event, bool) {
     write_time, time_ok := library_write_time(session.module_path)
     if !time_ok {
-        return Reload_Event{kind = .Reload_Failed, generation = session.generation, message = "failed to stat reload library"}, true
+        return {}, false
     }
     if time.time_to_unix_nano(write_time) == time.time_to_unix_nano(session.last_write) {
         return {}, false
