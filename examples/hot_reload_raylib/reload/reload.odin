@@ -23,11 +23,9 @@ init :: proc(state: ^Game_State) {
   game.init(state)
 }
 
-on_load :: proc(state: ^Game_State, is_reload: bool) {
-  if is_reload {
-    state.hud.reloads += 1
-    state.hud.message = "code reloaded"
-  }
+on_load :: proc(state: ^Game_State) {
+  state.hud.reloads += 1
+  state.hud.message = "code reloaded"
 }
 
 on_unload :: proc(state: ^Game_State) {

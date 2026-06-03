@@ -240,7 +240,7 @@ reload_module_source :: proc(cfg: Reload_Config, module_dir, package_path, runti
         fmt.sbprintf(&b, "    if !is_reload {{\n        app.%s(app_state)\n    }}\n", cfg.init_name)
     }
     if cfg.on_load_name != "" {
-        fmt.sbprintf(&b, "    app.%s(app_state, is_reload)\n", cfg.on_load_name)
+        fmt.sbprintf(&b, "    if is_reload {{\n        app.%s(app_state)\n    }}\n", cfg.on_load_name)
     }
     strings.write_string(&b, "}\n\n")
     fmt.sbprintf(&b, "@(export)\nprobe_reload_on_unload :: proc \"c\" (state: rawptr) {{\n    context = runtime.default_context()\n    app_state := (^app.%s)(state)\n", cfg.state_type)
@@ -896,11 +896,9 @@ init :: proc(state: ^Program_State) {
     program.init(state)
 }
 
-on_load :: proc(state: ^Program_State, is_reload: bool) {
+on_load :: proc(state: ^Program_State) {
     _ = state
-    if is_reload {
-        fmt.println("reloaded")
-    }
+    fmt.println("reloaded")
 }
 
 run :: proc(state: ^Program_State, host: ^probe_reload.Run_Host) {
@@ -926,7 +924,7 @@ run=run
 # init: optional. Called once for the first load.
 init=init
 #
-# on_load: optional. Called after initial load and each reload.
+# on_load: optional. Called after each successful reload, not on initial load.
 on_load=on_load
 #
 # on_unload: optional. Called before unloading a generation.

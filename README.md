@@ -201,11 +201,9 @@ init :: proc(state: ^Program_State) {
     program.init(state)
 }
 
-on_load :: proc(state: ^Program_State, is_reload: bool) {
+on_load :: proc(state: ^Program_State) {
     _ = state
-    if is_reload {
-        fmt.println("reloaded")
-    }
+    fmt.println("reloaded")
 }
 
 run :: proc(state: ^Program_State, host: ^probe_reload.Run_Host) {
@@ -255,7 +253,7 @@ Optional adapter procs:
 
 ```odin
 init :: proc(state: ^Program_State)
-on_load :: proc(state: ^Program_State, is_reload: bool)
+on_load :: proc(state: ^Program_State)
 on_unload :: proc(state: ^Program_State)
 force_reload :: proc(state: ^Program_State) -> bool
 force_restart :: proc(state: ^Program_State) -> bool

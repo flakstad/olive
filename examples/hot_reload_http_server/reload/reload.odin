@@ -10,11 +10,9 @@ init :: proc(state: ^Server_State) {
     server.init(state)
 }
 
-on_load :: proc(state: ^Server_State, is_reload: bool) {
-    if is_reload {
-        state.metrics.reloads += 1
-        fmt.printf("server code reloaded; accepted=%d reloads=%d\n", state.metrics.accepted, state.metrics.reloads)
-    }
+on_load :: proc(state: ^Server_State) {
+    state.metrics.reloads += 1
+    fmt.printf("server code reloaded; accepted=%d reloads=%d\n", state.metrics.accepted, state.metrics.reloads)
 }
 
 on_unload :: proc(state: ^Server_State) {
