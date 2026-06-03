@@ -1,13 +1,19 @@
 # Olive
 
-`olive` is live-development tooling for Odin. Its main feature is a generic
-hot-reload workflow for normal Odin programs. It also keeps the older
-scratch-eval tools for quick package-context experiments.
+Olive is live-development tooling for Odin.
 
-Odin remains the source of truth: Olive generates ordinary Odin wrappers and
-uses the real Odin compiler.
+Its main feature is a small, generic hot-reload workflow for ordinary Odin
+programs. Your production program stays normal: it can still be built and run
+with `odin build` and `odin run`. Olive adds a reload adapter for development,
+so code changes can be rebuilt and loaded into a running host while durable
+state is preserved.
 
-## Build
+Olive also includes scratch eval helpers for quick package-context experiments.
+They generate ordinary Odin and use the real Odin compiler.
+
+## Install
+
+Build the CLI:
 
 ```sh
 odin build cmd/probe -out:olive
@@ -15,7 +21,13 @@ odin build cmd/probe -out:olive
 
 ## Hot Reload
 
-Create a starter program:
+Olive is meant to make the normal edit-build-run cycle feel more like a live
+development loop. Keep the program running, edit ordinary Odin files, and let
+the reload host pick up the rebuilt module without throwing away state. This is
+useful for games, local tools, servers, simulations, editors, and other programs
+where restarting the whole process interrupts the work.
+
+Create a starter project:
 
 ```sh
 ./olive init scratch
@@ -23,241 +35,79 @@ cd scratch
 odin run .
 ```
 
-Run the resident reload host:
+Run the reload host:
 
 ```sh
 ../olive run reload/reload.conf
 ```
 
-In another terminal, rebuild manually:
-
-```sh
-../olive rebuild reload/reload.conf
-```
-
-Or keep a watcher running:
+In another terminal, keep the reloadable module rebuilding as you save files:
 
 ```sh
 ../olive watch reload/reload.conf
 ```
 
-Other reload commands:
+Or rebuild manually:
 
 ```sh
-./olive check reload/reload.conf
-./olive generate reload/reload.conf
-./olive paths reload/reload.conf
-./olive paths reload/reload.conf --json
-./olive clean reload/reload.conf
+../olive rebuild reload/reload.conf
 ```
 
-`check` validates the config, writes generated wrappers, and runs `odin check`
-on both the reloadable module wrapper and the resident host wrapper.
+The reload adapter's `run` proc should return regularly. Olive calls it
+repeatedly and checks for reloads between calls. For a game that usually means
+one frame; for a server, one request poll; for a worker, one small batch.
 
-`run --json` emits structured reload events for editor integrations:
-
-```sh
-./olive run reload/reload.conf --json
-```
-
-Generated host/module wrappers and build outputs live under `.probe/reload/`.
-Module rebuilds compile to a temporary library first and publish the watched
-library only after the build succeeds, so the resident host never observes a
-half-written dynamic library.
-
-State layout changes are rejected. If you change the root state layout, stop
-and restart `olive run`. Any `olive watch` process can stay running.
-
-## Reload Adapter
-
-For an existing program, add a `reload/` directory beside your normal Odin
-package:
-
-```text
-my_program/
-  main.odin
-  state.odin
-  game.odin
-  reload/
-    reload.odin
-    reload.conf
-```
-
-The adapter package is where reload-only code lives:
-
-```odin
-package reload
-
-import "core:fmt"
-import program ".."
-import probe_reload "../path/to/olive/src/probe_reload"
-
-Program_State :: program.Program_State
-
-init :: proc(state: ^Program_State) {
-    program.init(state)
-}
-
-on_load :: proc(state: ^Program_State) {
-    _ = state
-    fmt.println("reloaded")
-}
-
-run :: proc(state: ^Program_State, host: ^probe_reload.Run_Host) {
-    _ = host
-    program.tick(state)
-}
-```
-
-Minimal `reload.conf`:
-
-```text
-package=.
-runtime=/path/to/olive/src/probe_reload
-state=Program_State
-run=run
-init=init
-on_load=on_load
-module_name=reload
-watch=..
-generated_dir=../.probe/reload/generated
-build_dir=../.probe/reload/build
-```
-
-Required adapter proc:
-
-```odin
-run :: proc(state: ^Program_State, host: ^probe_reload.Run_Host)
-```
-
-Optional adapter procs:
-
-```odin
-init :: proc(state: ^Program_State)
-on_load :: proc(state: ^Program_State)
-on_unload :: proc(state: ^Program_State)
-force_reload :: proc(state: ^Program_State) -> bool
-force_restart :: proc(state: ^Program_State) -> bool
-host_init :: proc()
-host_shutdown :: proc()
-```
-
-Olive owns the development loop. It calls `run(state, host)` repeatedly and
-checks for reloads between calls. Keep `run` to one frame, one request poll, one
-small batch, or another short unit of work. If your normal code blocks forever
-inside `run`, Olive cannot safely swap code until that proc returns.
-
-Use `probe_reload.request_exit(host)` from `run` when the resident reload host
-should stop. Otherwise, return normally and Olive will call `run` again.
-
-The durable state contract is one root state, not one giant flat struct. Compose
-smaller subsystem structs inside the root and pass pointers to the subsystem
-state each function needs.
+If you change the root state layout, restart `olive run`. The watcher can stay
+running.
 
 ## Scratch Eval
 
-Run a package-context expression:
+Scratch eval is mostly intended for editor integrations. From Emacs, or another
+editor integration, you can run a selected expression, the current line, a proc
+call, or a comment block without editing your program's `main`.
+
+Comment blocks are a convenient way to keep small experiments near the code:
+
+```odin
+/*
+add(5, 2)
+some_package_local_proc(1, 2)
+*/
+```
+
+Olive temporarily generates an Odin runner for the selected code, compiles it
+with `odin`, and shows the result back in the editor.
+
+You can also run eval from the CLI:
 
 ```sh
 ./olive eval /path/to/package 'target.some_proc()'
-```
-
-For void procedures or statement snippets:
-
-```sh
-./olive eval /path/to/package 'target.do_work()' --no-print
-```
-
-Check without running:
-
-```sh
 ./olive eval /path/to/package 'target.some_proc()' --check
 ```
 
-Inspect generated Odin:
-
-```sh
-./olive eval /path/to/package 'target.some_proc()' --show
-```
-
-Write generated source to a file:
-
-```sh
-./olive eval /path/to/package 'target.some_proc()' --generated /tmp/olive-runner.odin
-```
-
-Store commands:
-
-```sh
-./olive store path /path/to/package
-./olive store save /path/to/package answer '42'
-./olive store load /path/to/package answer
-./olive store list /path/to/package
-./olive store rm /path/to/package answer
-```
-
-Value slots are plain text files under `/path/to/package/.probe/values/` by
-default. Set `PROBE_STORE_DIR` to use a different store location.
-
 ## Examples
 
-- `examples/hot_reload_raylib`: Raylib frame loop with input, rendering,
-  composed durable state, and reload-only adapter code.
-- `examples/hot_reload_http_server`: localhost HTTP request loop with durable
-  listener state and reloadable routing logic.
-- `examples/hot_reload_local_tool`: worker/tool loop with composed subsystem
-  state.
+The examples are the best way to see the reload pattern in context:
+
+- [`examples/hot_reload_raylib`](examples/hot_reload_raylib/README.md): a Raylib game loop.
+- [`examples/hot_reload_http_server`](examples/hot_reload_http_server/README.md): an idle-friendly local HTTP server.
+- [`examples/hot_reload_local_tool`](examples/hot_reload_local_tool/README.md): a long-running local worker with composed durable state.
 
 ## Emacs
 
-The repo includes an Emacs integration at `emacs/olive.el`.
-
-Minimal setup:
+The Emacs integration lives in [`emacs/olive.el`](emacs/olive.el).
 
 ```elisp
 (add-to-list 'load-path "<path-to>/olive/emacs")
 (require 'olive)
-
-;; If you use odin-mode:
 (add-hook 'odin-mode-hook #'olive-setup-odin-mode-keys)
 ```
 
 Build `./olive` first, or customize `olive-command`.
 
-Default commands:
+## Inspiration
 
-- `M-x olive-run-expression`
-- `M-x olive-check-expression`
-- `M-x olive-run-line`
-- `M-x olive-run-region`
-- `M-x olive-run-comment-block`
-- `M-x olive-run-proc`
-- `M-x olive-store-save`
-- `M-x olive-store-load`
-- `M-x olive-init`
-- `M-x olive-check`
-- `M-x olive-run`
-- `M-x olive-run-json`
-- `M-x olive-rebuild`
-- `M-x olive-watch`
-- `M-x olive-stop-run`
-- `M-x olive-stop-watch`
-- `M-x olive-paths`
-- `M-x olive-clean`
+Olive's hot-reload workflow is inspired in part by Karl Zylinski's Odin Raylib
+hot reload template:
 
-Normal Odin package commands should use `odin run`, `odin check`, `odin build`,
-and `odin test` directly. Olive no longer forwards those commands.
-
-## Tests
-
-```sh
-./scripts/test_tooling.sh
-```
-
-That script runs:
-
-```sh
-odin check cmd/probe
-odin test tests -define:ODIN_TEST_LOG_LEVEL=warning
-emacs -Q --batch -f batch-byte-compile emacs/olive.el
-```
+https://github.com/karl-zylinski/odin-raylib-hot-reload-game-template
