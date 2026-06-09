@@ -16,6 +16,7 @@ Reload_Target :: struct {
     init_name:     string,
     on_load_name:  string,
     on_unload_name: string,
+    resource_change_name: string,
     force_reload_name: string,
     force_restart_name: string,
     host_init_name: string,
@@ -24,6 +25,7 @@ Reload_Target :: struct {
     build_dir:     string,
     module_name:   string,
     watch_paths:   string,
+    resource_watch_paths: string,
     watch_debounce_ms: string,
     odin_args: string,
 }
@@ -188,6 +190,9 @@ read_reload_target :: proc(reload_dir: string) -> (Reload_Target, string, bool) 
     if has_conventional_proc(source, "on_unload") {
         cfg.on_unload_name = strings.clone("on_unload")
     }
+    if has_conventional_proc(source, "on_resource_change") {
+        cfg.resource_change_name = strings.clone("on_resource_change")
+    }
     if has_conventional_proc(source, "force_reload") {
         cfg.force_reload_name = strings.clone("force_reload")
     }
@@ -207,6 +212,9 @@ read_reload_target :: proc(reload_dir: string) -> (Reload_Target, string, bool) 
     if value, found := conventional_string_value(source, "Olive_Watch"); found {
         delete(cfg.watch_paths)
         cfg.watch_paths = value
+    }
+    if value, found := conventional_string_value(source, "Olive_Watch_Resources"); found {
+        cfg.resource_watch_paths = value
     }
     if value, found := conventional_string_value(source, "Olive_Watch_Debounce_MS"); found {
         delete(cfg.watch_debounce_ms)
@@ -329,7 +337,35 @@ reload_module_source :: proc(cfg: Reload_Target, module_dir, package_path, runti
     if cfg.force_restart_name != "" {
         fmt.sbprintf(&b, "\n@(export)\nolive_reload_force_restart :: proc \"c\" (state: rawptr) -> bool {{\n    context = runtime.default_context()\n    app_state := (^app.%s)(state)\n    return app.%s(app_state)\n}}\n", cfg.state_type, cfg.force_restart_name)
     }
+    if cfg.resource_change_name != "" {
+        fmt.sbprintf(&b, "\n@(export)\nolive_reload_resource_changed :: proc \"c\" (state: rawptr, path_data: rawptr, path_len: int) {{\n    context = runtime.default_context()\n    app_state := (^app.%s)(state)\n    path := string(([^]byte)(path_data)[:path_len])\n    app.%s(app_state, path)\n}}\n", cfg.state_type, cfg.resource_change_name)
+    }
     return strings.clone(strings.to_string(b))
+}
+
+comma_paths_for :: proc(cfg: Reload_Target, value: string, fallback: string = "") -> [dynamic]string {
+    paths := make([dynamic]string)
+    rest := value
+    for {
+        part := rest
+        next := ""
+        if comma := strings.index(rest, ","); comma >= 0 {
+            part = rest[:comma]
+            next = rest[comma+1:]
+        }
+        trimmed := trim(part)
+        if trimmed != "" {
+            append(&paths, path_relative_to_reload_root(cfg, trimmed))
+        }
+        if next == "" {
+            break
+        }
+        rest = next
+    }
+    if len(paths) == 0 && fallback != "" {
+        append(&paths, path_relative_to_reload_root(cfg, fallback))
+    }
+    return paths
 }
 
 reload_host_source :: proc(cfg: Reload_Target, host_dir, package_path, runtime_path, module_binary_path: string) -> string {
@@ -345,8 +381,9 @@ reload_host_source :: proc(cfg: Reload_Target, host_dir, package_path, runtime_p
     strings.write_string(&b, "import \"core:os\"\n")
     fmt.sbprintf(&b, "import app %q\n", app_import)
     fmt.sbprintf(&b, "import olive_reload %q\n\n", runtime_import)
-    strings.write_string(&b, "App_Symbols :: struct {\n    run: proc \"c\" (state: rawptr, host: rawptr) `dynlib:\"olive_reload_app_run\"`,\n    force_reload: proc \"c\" (state: rawptr) -> bool `dynlib:\"olive_reload_force_reload\"`,\n    force_restart: proc \"c\" (state: rawptr) -> bool `dynlib:\"olive_reload_force_restart\"`,\n    __handle: dynlib.Library,\n}\n\n")
+    strings.write_string(&b, "App_Symbols :: struct {\n    run: proc \"c\" (state: rawptr, host: rawptr) `dynlib:\"olive_reload_app_run\"`,\n    resource_changed: proc \"c\" (state: rawptr, path_data: rawptr, path_len: int) `dynlib:\"olive_reload_resource_changed\"`,\n    force_reload: proc \"c\" (state: rawptr) -> bool `dynlib:\"olive_reload_force_reload\"`,\n    force_restart: proc \"c\" (state: rawptr) -> bool `dynlib:\"olive_reload_force_restart\"`,\n    __handle: dynlib.Library,\n}\n\n")
     fmt.sbprintf(&b, "run :: proc(symbols: ^App_Symbols, state: ^app.%s, host: ^olive_reload.Run_Host) {{\n    symbols.run(rawptr(state), rawptr(host))\n}}\n\n", cfg.state_type)
+    fmt.sbprintf(&b, "resource_changed :: proc(symbols: ^App_Symbols, state: ^app.%s, path: string) {{\n    if symbols.resource_changed == nil || len(path) == 0 {{\n        return\n    }}\n    bytes := transmute([]byte)path\n    symbols.resource_changed(rawptr(state), rawptr(&bytes[0]), len(bytes))\n}}\n\n", cfg.state_type)
     fmt.sbprintf(&b, "force_reload :: proc(symbols: ^App_Symbols, state: ^app.%s) -> bool {{\n    return symbols.force_reload != nil && symbols.force_reload(rawptr(state))\n}}\n\n", cfg.state_type)
     fmt.sbprintf(&b, "force_restart :: proc(symbols: ^App_Symbols, state: ^app.%s) -> bool {{\n    return symbols.force_restart != nil && symbols.force_restart(rawptr(state))\n}}\n\n", cfg.state_type)
     fmt.sbprintf(&b, "reset_state :: proc(state: ^app.%s) {{\n    state^ = app.%s{{}}\n}}\n\n", cfg.state_type, cfg.state_type)
@@ -365,7 +402,17 @@ reload_host_source :: proc(cfg: Reload_Target, host_dir, package_path, runtime_p
     }
     fmt.sbprintf(&b, "    state := app.%s{{}}\n", cfg.state_type)
     strings.write_string(&b, "    symbols := App_Symbols{}\n")
-    strings.write_string(&b, "    status := olive_reload.run_host(module_path, &symbols, &state, run, event_handler(), force_reload, force_restart, reset_state)\n")
+    resource_paths := comma_paths_for(cfg, cfg.resource_watch_paths)
+    defer delete_watch_paths(resource_paths)
+    if len(resource_paths) > 0 {
+        strings.write_string(&b, "    resource_paths := make([dynamic]string)\n")
+        for path in resource_paths {
+            fmt.sbprintf(&b, "    append(&resource_paths, %q)\n", path)
+        }
+        strings.write_string(&b, "    status := olive_reload.run_host_with_resources(module_path, &symbols, &state, run, event_handler(), force_reload, force_restart, reset_state, resource_paths[:], resource_changed)\n")
+    } else {
+        strings.write_string(&b, "    status := olive_reload.run_host(module_path, &symbols, &state, run, event_handler(), force_reload, force_restart, reset_state)\n")
+    }
     if cfg.host_shutdown_name != "" {
         fmt.sbprintf(&b, "    app.%s()\n", cfg.host_shutdown_name)
     }
@@ -458,6 +505,7 @@ print_reload_paths :: proc(reload_dir: string, json := false) {
         print_json_field("host_binary", paths.host_binary)
         print_json_field("package", cfg.package_path)
         print_json_field("watch", cfg.watch_paths)
+        print_json_field("resource_watch", cfg.resource_watch_paths)
         print_json_field("watch_debounce_ms", cfg.watch_debounce_ms)
         print_json_field("odin_args", cfg.odin_args)
         print_json_field("run_command", fmt.tprintf("olive run %s", reload_dir))
@@ -477,6 +525,7 @@ print_reload_paths :: proc(reload_dir: string, json := false) {
     fmt.printf("host_binary: %s\n", paths.host_binary)
     fmt.printf("package: %s\n", cfg.package_path)
     fmt.printf("watch: %s\n", cfg.watch_paths)
+    fmt.printf("resource_watch: %s\n", cfg.resource_watch_paths)
     fmt.printf("watch_debounce_ms: %s\n", cfg.watch_debounce_ms)
     fmt.printf("odin_args: %s\n", cfg.odin_args)
     fmt.printf("run_command: olive run %s\n", reload_dir)
@@ -683,6 +732,18 @@ reload_check :: proc(reload_dir: string) -> int {
     if !watch_found {
         fmt.eprintln("watch paths contain no .odin files")
         ok = false
+    }
+    if cfg.resource_watch_paths != "" && cfg.resource_change_name == "" {
+        fmt.eprintln("Olive_Watch_Resources requires on_resource_change")
+        ok = false
+    }
+    resource_paths := comma_paths_for(cfg, cfg.resource_watch_paths)
+    defer delete_watch_paths(resource_paths)
+    for path in resource_paths {
+        if !os.exists(path) {
+            fmt.eprintln("resource watch path does not exist: ", path)
+            ok = false
+        }
     }
     if !ok {
         return 1

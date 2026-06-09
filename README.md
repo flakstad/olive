@@ -134,6 +134,7 @@ If the adapter needs non-default settings, define conventional constants in
 Olive_Module_Name :: "my_game"
 Olive_Odin_Args :: "-define:RAYLIB_SHARED=true"
 Olive_Watch :: ".."
+Olive_Watch_Resources :: "../assets"
 Olive_Watch_Debounce_MS :: "150"
 ```
 
@@ -174,6 +175,8 @@ Optional lifecycle hooks are detected by name when present:
   on the initial load.
 - `on_unload :: proc(state: ^Reload_State)`: called before unloading the current
   generation.
+- `on_resource_change :: proc(state: ^Reload_State, path: string)`: called by
+  `olive run` when a watched non-code resource changes.
 - `force_reload :: proc(state: ^Reload_State) -> bool`: return true to request a
   reload check even if the library timestamp did not change.
 - `force_restart :: proc(state: ^Reload_State) -> bool`: return true to reset
@@ -189,12 +192,57 @@ Optional adapter constants:
   `odin check` and `odin build` commands.
 - `Olive_Watch :: ".."`: comma-separated paths to poll for `.odin` changes,
   relative to the reload directory.
+- `Olive_Watch_Resources :: "../assets,../templates"`: comma-separated paths to
+  poll for non-code resource changes, relative to the reload directory.
 - `Olive_Watch_Debounce_MS :: "150"`: quiet period after a detected change
   before rebuilding.
 
 Host hooks are for resources that should not be recreated on every reload. For
 example, the Raylib example opens the window in `host_init`, closes it in
 `host_shutdown`, and keeps drawing one frame per `run`.
+
+### Resource Watching
+
+Code reload and resource reload are separate. `olive watch` watches Odin source
+files and rebuilds the reloadable module. `olive run` can also watch external
+resource files and notify the running program without rebuilding or swapping the
+module.
+
+Resource watching is useful beyond games. Games can reload shaders, textures,
+levels, and audio. UI/editor tools can reload themes, templates, documents, or
+preview data. Simulations can reload scenario files, parameter sets, or input
+datasets.
+
+Add resource paths and a hook to the adapter:
+
+```odin
+Olive_Watch_Resources :: "../assets,../templates"
+
+on_resource_change :: proc(state: ^Reload_State, path: string) {
+    app.reload_resource(state, path)
+}
+```
+
+The hook receives the changed path and decides what to do. Olive ignores `.odin`
+files in resource watches; source files should go through the normal rebuild
+path.
+
+### Broadcast On Reload
+
+For browser or UI clients connected to a running process, `on_load` is a good
+place to push a fresh snapshot after code reload:
+
+```odin
+on_load :: proc(state: ^Reload_State) {
+    app.broadcast_snapshot_to_connected_clients(state)
+}
+```
+
+Keep long-lived connections, client lists, and current application data in
+durable state or host-owned state. Avoid storing callbacks or function pointers
+from reloadable code in those long-lived clients; after a reload, those pointers
+can refer to old code. Let the new generation's `on_load` serialize or render
+the current state and push it again.
 
 ## State Management
 

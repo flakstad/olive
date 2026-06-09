@@ -22,6 +22,7 @@ Reload_Event_Kind :: enum {
     Started,
     Reloaded,
     Restarted,
+    Resource_Changed,
     Reload_Failed,
 }
 
@@ -265,6 +266,79 @@ poll_session :: proc(session: ^Session, app_symbols: ^$T, state: ^$S, init_state
     return Reload_Event{kind = .Reloaded, generation = session.generation}, true
 }
 
+resource_write_time :: proc(path: string) -> (time.Time, string, bool) {
+    info, stat_err := os.stat(path, context.temp_allocator)
+    if stat_err != nil {
+        return {}, "", false
+    }
+    if info.type == .Regular {
+        if strings.has_suffix(info.name, ".odin") {
+            return {}, "", false
+        }
+        return info.modification_time, strings.clone(path), true
+    }
+    if info.type != .Directory {
+        return {}, "", false
+    }
+
+    newest := time.Time{}
+    newest_path := ""
+    found := false
+    entries, read_err := os.read_directory_by_path(path, -1, context.temp_allocator)
+    if read_err != nil {
+        return {}, "", false
+    }
+    for entry in entries {
+        if entry.name == "." || entry.name == ".." || entry.name == ".olive" || entry.name == ".git" {
+            continue
+        }
+        child := entry.fullpath
+        if child == "" {
+            joined, join_err := os.join_path({path, entry.name}, context.temp_allocator)
+            if join_err != nil {
+                continue
+            }
+            child = joined
+        }
+        child_time, child_path, child_found := resource_write_time(child)
+        if child_found {
+            if !found || time.time_to_unix_nano(child_time) > time.time_to_unix_nano(newest) {
+                if found {
+                    delete(newest_path)
+                }
+                newest = child_time
+                newest_path = child_path
+                found = true
+            } else {
+                delete(child_path)
+            }
+        }
+    }
+    return newest, newest_path, found
+}
+
+newest_resource_write_time :: proc(paths: []string) -> (time.Time, string, bool) {
+    newest := time.Time{}
+    newest_path := ""
+    found := false
+    for path in paths {
+        path_time, path_name, path_found := resource_write_time(path)
+        if path_found {
+            if !found || time.time_to_unix_nano(path_time) > time.time_to_unix_nano(newest) {
+                if found {
+                    delete(newest_path)
+                }
+                newest = path_time
+                newest_path = path_name
+                found = true
+            } else {
+                delete(path_name)
+            }
+        }
+    }
+    return newest, newest_path, found
+}
+
 default_event_handler :: proc(event: Reload_Event) {
     switch event.kind {
     case .Started:
@@ -273,6 +347,8 @@ default_event_handler :: proc(event: Reload_Event) {
         fmt.printf("[olive] reloaded generation=%d\n", event.generation)
     case .Restarted:
         fmt.printf("[olive] restarted generation=%d: %s\n", event.generation, event.message)
+    case .Resource_Changed:
+        fmt.printf("[olive] resource changed: %s\n", event.message)
     case .Reload_Failed:
         fmt.eprintf("[olive] reload failed: %s\n", event.message)
     }
@@ -286,6 +362,8 @@ event_kind_name :: proc(kind: Reload_Event_Kind) -> string {
         return "reloaded"
     case .Restarted:
         return "restarted"
+    case .Resource_Changed:
+        return "resource_changed"
     case .Reload_Failed:
         return "reload_failed"
     }
@@ -339,6 +417,33 @@ run_host :: proc(
     force_restart: proc(^T, ^S) -> bool = nil,
     init_state: proc(^S) = nil,
 ) -> int {
+    return run_host_with_resources(
+        module_path,
+        app_symbols,
+        state,
+        run,
+        on_event,
+        force_reload,
+        force_restart,
+        init_state,
+        nil,
+        proc(^T, ^S, string)(nil),
+    )
+}
+
+run_host_with_resources :: proc(
+    module_path: string,
+    app_symbols: ^$T,
+    state: ^$S,
+    run: proc(^T, ^S, ^Run_Host),
+    on_event := default_event_handler,
+    force_reload: proc(^T, ^S) -> bool = nil,
+    force_restart: proc(^T, ^S) -> bool = nil,
+    init_state: proc(^S) = nil,
+    resource_paths: []string,
+    on_resource_change: proc(^T, ^S, string),
+    resource_debounce := 150 * time.Millisecond,
+) -> int {
     session, message, ok := start_session(module_path, app_symbols, state)
     if !ok {
         on_event(Reload_Event{kind = .Reload_Failed, message = message})
@@ -349,6 +454,14 @@ run_host :: proc(
     on_event(Reload_Event{kind = .Started, generation = session.generation})
 
     host := Run_Host{}
+    last_resource_write := time.Time{}
+    if len(resource_paths) > 0 && on_resource_change != nil {
+        initial_resource_write, initial_resource_path, initial_resource_found := newest_resource_write_time(resource_paths)
+        if initial_resource_found {
+            last_resource_write = initial_resource_write
+            delete(initial_resource_path)
+        }
+    }
     for {
         host.exit_requested = false
         run(app_symbols, state, &host)
@@ -370,6 +483,25 @@ run_host :: proc(
         event, changed := poll_session(&session, app_symbols, state, init_state)
         if changed {
             on_event(event)
+        }
+        if len(resource_paths) > 0 && on_resource_change != nil {
+            resource_write, resource_path, resource_found := newest_resource_write_time(resource_paths)
+            if resource_found {
+                changed_resource := time.time_to_unix_nano(resource_write) != time.time_to_unix_nano(last_resource_write)
+                if changed_resource {
+                    delete(resource_path)
+                    time.sleep(resource_debounce)
+                    resource_write, resource_path, resource_found = newest_resource_write_time(resource_paths)
+                    if resource_found {
+                        last_resource_write = resource_write
+                        on_resource_change(app_symbols, state, resource_path)
+                        on_event(Reload_Event{kind = .Resource_Changed, generation = session.generation, message = resource_path})
+                    }
+                }
+                if resource_path != "" {
+                    delete(resource_path)
+                }
+            }
         }
     }
     return 0

@@ -591,9 +591,43 @@ tick :: proc(state: ^Program_State) {
   defer delete(reload_dir)
   reload_path, reload_join_err := os.join_path({reload_dir, "reload.odin"}, context.allocator)
   testing.expect_value(t, reload_join_err == nil, true)
+  if reload_join_err != nil {
+    return
+  }
+  defer delete(reload_path)
   if reload_join_err == nil {
-    defer delete(reload_path)
     testing.expect_value(t, os.exists(reload_path), true)
+  }
+  resources_dir, resources_join_err := os.join_path({app_dir, "resources"}, context.allocator)
+  testing.expect_value(t, resources_join_err == nil, true)
+  if resources_join_err == nil {
+    defer delete(resources_dir)
+    testing.expect_value(t, os.make_directory_all(resources_dir) == nil, true)
+    resource_file, resource_file_join_err := os.join_path({resources_dir, "message.txt"}, context.allocator)
+    testing.expect_value(t, resource_file_join_err == nil, true)
+    if resource_file_join_err == nil {
+      defer delete(resource_file)
+      testing.expect_value(t, os.write_entire_file_from_string(resource_file, "hello") == nil, true)
+    }
+  }
+  if reload_join_err == nil {
+    reload_source, reload_read_err := os.read_entire_file_from_path(reload_path, context.allocator)
+    testing.expect_value(t, reload_read_err == nil, true)
+    if reload_read_err == nil {
+      defer delete(reload_source)
+      builder := strings.builder_make()
+      defer strings.builder_destroy(&builder)
+      strings.write_string(&builder, string(reload_source))
+      strings.write_string(&builder, `
+Olive_Watch_Resources :: "../resources"
+
+on_resource_change :: proc(state: ^Reload_State, path: string) {
+    _ = path
+    state.ticks += 0
+}
+`)
+      testing.expect_value(t, os.write_entire_file_from_string(reload_path, strings.to_string(builder)) == nil, true)
+    }
   }
   main_path, main_join_err := os.join_path({app_dir, "main.odin"}, context.allocator)
   testing.expect_value(t, main_join_err == nil, true)
@@ -625,6 +659,7 @@ tick :: proc(state: ^Program_State) {
   testing.expect_value(t, strings.contains(paths_result.stdout, "module_binary:"), true)
   testing.expect_value(t, strings.contains(paths_result.stdout, "package:"), true)
   testing.expect_value(t, strings.contains(paths_result.stdout, "watch:"), true)
+  testing.expect_value(t, strings.contains(paths_result.stdout, "resource_watch:"), true)
   testing.expect_value(t, strings.contains(paths_result.stdout, "watch_debounce_ms:"), true)
   testing.expect_value(t, strings.contains(paths_result.stdout, "watch_command:"), true)
   testing.expect_value(t, strings.contains(paths_result.stdout, "build_command:"), true)
@@ -635,6 +670,7 @@ tick :: proc(state: ^Program_State) {
   testing.expect_value(t, strings.contains(json_paths_result.stdout, `"module_binary"`), true)
   testing.expect_value(t, strings.contains(json_paths_result.stdout, `"package"`), true)
   testing.expect_value(t, strings.contains(json_paths_result.stdout, `"watch"`), true)
+  testing.expect_value(t, strings.contains(json_paths_result.stdout, `"resource_watch"`), true)
   testing.expect_value(t, strings.contains(json_paths_result.stdout, `"watch_debounce_ms"`), true)
   testing.expect_value(t, strings.contains(json_paths_result.stdout, `"watch_command"`), true)
   testing.expect_value(t, strings.contains(json_paths_result.stdout, `"build_command"`), true)
