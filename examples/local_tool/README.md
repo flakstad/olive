@@ -18,13 +18,13 @@ Reload run:
 
 ```sh
 odin build cmd/olive -out:olive
-./olive run examples/local_tool/reload/reload.conf
+./olive run examples/local_tool/reload
 ```
 
 In another terminal:
 
 ```sh
-./olive watch examples/local_tool/reload/reload.conf
+./olive watch examples/local_tool/reload
 ```
 
 Edit `main.odin` to change parsing/reporting behavior. The durable parser,

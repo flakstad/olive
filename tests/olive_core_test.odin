@@ -583,13 +583,18 @@ tick :: proc(state: ^Program_State) {
   defer delete_exec_result(init_result)
   testing.expect_value(t, init_result.exit_code, 0)
 
-  config_path, config_join_err := os.join_path({app_dir, "reload", "reload.conf"}, context.allocator)
-  testing.expect_value(t, config_join_err == nil, true)
-  if config_join_err != nil {
+  reload_dir, reload_dir_join_err := os.join_path({app_dir, "reload"}, context.allocator)
+  testing.expect_value(t, reload_dir_join_err == nil, true)
+  if reload_dir_join_err != nil {
     return
   }
-  defer delete(config_path)
-  testing.expect_value(t, os.exists(config_path), true)
+  defer delete(reload_dir)
+  reload_path, reload_join_err := os.join_path({reload_dir, "reload.odin"}, context.allocator)
+  testing.expect_value(t, reload_join_err == nil, true)
+  if reload_join_err == nil {
+    defer delete(reload_path)
+    testing.expect_value(t, os.exists(reload_path), true)
+  }
   main_path, main_join_err := os.join_path({app_dir, "main.odin"}, context.allocator)
   testing.expect_value(t, main_join_err == nil, true)
   if main_join_err == nil {
@@ -609,12 +614,12 @@ tick :: proc(state: ^Program_State) {
     testing.expect_value(t, os.exists(game_path), false)
   }
 
-  check_result := exec([]string{binary, "check", config_path})
+  check_result := exec([]string{binary, "check"}, app_dir)
   defer delete_exec_result(check_result)
   testing.expect_value(t, check_result.exit_code, 0)
-  testing.expect_value(t, strings.contains(check_result.stdout, "config ok"), true)
+  testing.expect_value(t, strings.contains(check_result.stdout, "reload ok"), true)
 
-  paths_result := exec([]string{binary, "paths", config_path})
+  paths_result := exec([]string{binary, "paths"}, app_dir)
   defer delete_exec_result(paths_result)
   testing.expect_value(t, paths_result.exit_code, 0)
   testing.expect_value(t, strings.contains(paths_result.stdout, "module_binary:"), true)
@@ -624,7 +629,7 @@ tick :: proc(state: ^Program_State) {
   testing.expect_value(t, strings.contains(paths_result.stdout, "watch_command:"), true)
   testing.expect_value(t, strings.contains(paths_result.stdout, "build_command:"), true)
 
-  json_paths_result := exec([]string{binary, "paths", config_path, "--json"})
+  json_paths_result := exec([]string{binary, "paths", "--json"}, app_dir)
   defer delete_exec_result(json_paths_result)
   testing.expect_value(t, json_paths_result.exit_code, 0)
   testing.expect_value(t, strings.contains(json_paths_result.stdout, `"module_binary"`), true)
@@ -634,7 +639,7 @@ tick :: proc(state: ^Program_State) {
   testing.expect_value(t, strings.contains(json_paths_result.stdout, `"watch_command"`), true)
   testing.expect_value(t, strings.contains(json_paths_result.stdout, `"build_command"`), true)
 
-  build_result := exec([]string{binary, "build", config_path})
+  build_result := exec([]string{binary, "build", reload_dir})
   defer delete_exec_result(build_result)
   testing.expect_value(t, build_result.exit_code, 0)
 
@@ -642,86 +647,7 @@ tick :: proc(state: ^Program_State) {
   defer delete_exec_result(default_build_result)
   testing.expect_value(t, default_build_result.exit_code, 0)
 
-  bad_run_config_path, bad_run_config_join_err := os.join_path({app_dir, "bad-run.reload.conf"}, context.allocator)
-  testing.expect_value(t, bad_run_config_join_err == nil, true)
-  if bad_run_config_join_err == nil {
-    defer delete(bad_run_config_path)
-    cwd, cwd_err := os.get_working_directory(context.allocator)
-    testing.expect_value(t, cwd_err == nil, true)
-    if cwd_err != nil {
-      return
-    }
-    defer delete(cwd)
-    runtime_path, runtime_join_err := os.join_path({cwd, "src", "olive_reload"}, context.allocator)
-    testing.expect_value(t, runtime_join_err == nil, true)
-    if runtime_join_err != nil {
-      return
-    }
-    defer delete(runtime_path)
-    bad_run_config := fmt.tprintf(`package=reload
-runtime=%s
-state=Program_State
-run=missing_run
-watch=reload
-generated_dir=.olive/bad-run/generated
-build_dir=.olive/bad-run/build
-`, runtime_path)
-    testing.expect_value(t, os.write_entire_file_from_string(bad_run_config_path, bad_run_config) == nil, true)
-    bad_run_result := exec([]string{binary, "check", bad_run_config_path})
-    defer delete_exec_result(bad_run_result)
-    testing.expect_value(t, bad_run_result.exit_code, 1)
-    testing.expect_value(t, strings.contains(bad_run_result.stdout, "checking generated reload module"), true)
-    testing.expect_value(t, strings.contains(bad_run_result.stderr, "missing_run"), true)
-  }
-
-  bad_config_path, bad_config_join_err := os.join_path({app_dir, "bad.reload.conf"}, context.allocator)
-  testing.expect_value(t, bad_config_join_err == nil, true)
-  if bad_config_join_err == nil {
-    defer delete(bad_config_path)
-bad_config := `package=missing-package
-runtime=missing-runtime
-state=Program_State
-run=run
-`
-    testing.expect_value(t, os.write_entire_file_from_string(bad_config_path, bad_config) == nil, true)
-    bad_check_result := exec([]string{binary, "check", bad_config_path})
-    defer delete_exec_result(bad_check_result)
-    testing.expect_value(t, bad_check_result.exit_code, 1)
-    testing.expect_value(t, strings.contains(bad_check_result.stderr, "package path is not a directory"), true)
-    testing.expect_value(t, strings.contains(bad_check_result.stderr, "runtime path is not a directory"), true)
-  }
-
-  bad_debounce_config_path, bad_debounce_join_err := os.join_path({app_dir, "bad-debounce.reload.conf"}, context.allocator)
-  testing.expect_value(t, bad_debounce_join_err == nil, true)
-  if bad_debounce_join_err == nil {
-    defer delete(bad_debounce_config_path)
-    cwd, cwd_err := os.get_working_directory(context.allocator)
-    testing.expect_value(t, cwd_err == nil, true)
-    if cwd_err != nil {
-      return
-    }
-    defer delete(cwd)
-    runtime_path, runtime_join_err := os.join_path({cwd, "src", "olive_reload"}, context.allocator)
-    testing.expect_value(t, runtime_join_err == nil, true)
-    if runtime_join_err != nil {
-      return
-    }
-    defer delete(runtime_path)
-    bad_debounce_config := fmt.tprintf(`package=reload
-runtime=%s
-state=Program_State
-run=run
-watch=reload
-watch_debounce_ms=nope
-`, runtime_path)
-    testing.expect_value(t, os.write_entire_file_from_string(bad_debounce_config_path, bad_debounce_config) == nil, true)
-    bad_debounce_result := exec([]string{binary, "check", bad_debounce_config_path})
-    defer delete_exec_result(bad_debounce_result)
-    testing.expect_value(t, bad_debounce_result.exit_code, 1)
-    testing.expect_value(t, strings.contains(bad_debounce_result.stderr, "watch_debounce_ms must be an integer"), true)
-  }
-
-  clean_result := exec([]string{binary, "clean", config_path})
+  clean_result := exec([]string{binary, "clean"}, app_dir)
   defer delete_exec_result(clean_result)
   testing.expect_value(t, clean_result.exit_code, 0)
 

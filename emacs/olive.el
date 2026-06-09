@@ -837,35 +837,30 @@ With prefix argument NO-PRINT, treat the code as statements."
       (visual-line-mode 1))
     buffer))
 
-(defun olive--default-reload-config ()
-  "Return a likely reload config path for the current buffer."
+(defun olive--default-reload-target ()
+  "Return a likely reload directory for the current buffer."
   (let* ((project (olive-project-directory))
-         (package (olive-package-directory))
-         (file (and buffer-file-name (expand-file-name buffer-file-name)))
+         (_package (olive-package-directory))
+         (_file (and buffer-file-name (expand-file-name buffer-file-name)))
          (candidates (delq nil
                            (list
-                            (and file
-                                 (string= (file-name-nondirectory file) "reload.conf")
-                                 file)
-                            (expand-file-name "reload.conf" package)
-                            (expand-file-name "reload/reload.conf" package)
-                            (expand-file-name "reload/reload.conf" project)))))
+                            (expand-file-name "reload" project)))))
     (or (seq-find #'file-exists-p candidates)
-        (expand-file-name "reload/reload.conf" project))))
+        (expand-file-name "reload" project))))
 
-(defun olive--read-reload-config ()
-  "Read a reload config path, defaulting to `reload/reload.conf' when present."
-  (let* ((default (olive--default-reload-config))
+(defun olive--read-reload-target ()
+  "Read a reload directory."
+  (let* ((default (olive--default-reload-target))
          (dir (file-name-directory default))
          (name (file-name-nondirectory default)))
-    (read-file-name "Reload config: " dir default t name)))
+    (read-file-name "Reload target: " dir default t name)))
 
-(defun olive--interactive-reload-config (&optional choose)
-  "Return reload config for an interactive command.
-When CHOOSE is non-nil, prompt even if a default config exists."
-  (let ((default (olive--default-reload-config)))
+(defun olive--interactive-reload-target (&optional choose)
+  "Return reload directory for an interactive command.
+When CHOOSE is non-nil, prompt even if a default target exists."
+  (let ((default (olive--default-reload-target)))
     (if (or choose (not (file-exists-p default)))
-        (olive--read-reload-config)
+        (olive--read-reload-target)
       default)))
 
 (defun olive--reload-event-value (event key)
@@ -1226,70 +1221,70 @@ Show `olive-result-buffer-name' only on failure. Run ON-SUCCESS on exit 0."
    (format "init %s" directory)))
 
 ;;;###autoload
-(defun olive-generate (config)
-  "Generate hot-reload host/module wrappers from CONFIG."
-  (interactive (list (olive--interactive-reload-config current-prefix-arg)))
+(defun olive-generate (target)
+  "Generate hot-reload host/module wrappers from TARGET."
+  (interactive (list (olive--interactive-reload-target current-prefix-arg)))
   (olive--command-in-project
-   (list "generate" (expand-file-name config))
-   (format "generate %s" config)
+   (list "generate" (expand-file-name target))
+   (format "generate %s" target)
    nil
    t))
 
 ;;;###autoload
-(defun olive-check (config)
-  "Check hot-reload CONFIG without building."
-  (interactive (list (olive--interactive-reload-config current-prefix-arg)))
+(defun olive-check (target)
+  "Check hot-reload TARGET without building."
+  (interactive (list (olive--interactive-reload-target current-prefix-arg)))
   (olive--command-in-project
-   (list "check" (expand-file-name config))
-   (format "check %s" config)
+   (list "check" (expand-file-name target))
+   (format "check %s" target)
    nil
    t))
 
 ;;;###autoload
-(defun olive-run (config)
-  "Build and run hot-reload host from CONFIG."
-  (interactive (list (olive--interactive-reload-config current-prefix-arg)))
-  (olive--run-reload-command (olive-project-directory) config))
+(defun olive-run (target)
+  "Build and run hot-reload host from TARGET."
+  (interactive (list (olive--interactive-reload-target current-prefix-arg)))
+  (olive--run-reload-command (olive-project-directory) target))
 
 ;;;###autoload
-(defun olive-run-json (config)
-  "Build and run hot-reload host from CONFIG with structured events."
-  (interactive (list (olive--interactive-reload-config current-prefix-arg)))
-  (olive--run-reload-command (olive-project-directory) config t))
+(defun olive-run-json (target)
+  "Build and run hot-reload host from TARGET with structured events."
+  (interactive (list (olive--interactive-reload-target current-prefix-arg)))
+  (olive--run-reload-command (olive-project-directory) target t))
 
 ;;;###autoload
-(defun olive-build (config)
-  "Build only the hot-reload module from CONFIG."
-  (interactive (list (olive--interactive-reload-config current-prefix-arg)))
+(defun olive-build (target)
+  "Build only the hot-reload module from TARGET."
+  (interactive (list (olive--interactive-reload-target current-prefix-arg)))
   (olive--command-in-project
-   (list "build" (expand-file-name config))
-   (format "build %s" config)
+   (list "build" (expand-file-name target))
+   (format "build %s" target)
    nil
    t))
 
 ;;;###autoload
-(defun olive-watch (config)
-  "Watch CONFIG's reload paths and build the hot-reload module on changes."
-  (interactive (list (olive--interactive-reload-config current-prefix-arg)))
-  (olive--run-reload-command (olive-project-directory) config nil "watch"))
+(defun olive-watch (target)
+  "Watch TARGET's reload paths and build the hot-reload module on changes."
+  (interactive (list (olive--interactive-reload-target current-prefix-arg)))
+  (olive--run-reload-command (olive-project-directory) target nil "watch"))
 
 ;;;###autoload
-(defun olive-paths (config)
-  "Show hot-reload generated paths for CONFIG."
-  (interactive (list (olive--interactive-reload-config current-prefix-arg)))
+(defun olive-paths (target)
+  "Show hot-reload generated paths for TARGET."
+  (interactive (list (olive--interactive-reload-target current-prefix-arg)))
   (olive--command-in-project
-   (list "paths" (expand-file-name config))
-   (format "paths %s" config)
+   (list "paths" (expand-file-name target))
+   (format "paths %s" target)
    nil
    t))
 
 ;;;###autoload
-(defun olive-clean (config)
-  "Remove hot-reload generated files and build outputs for CONFIG."
-  (interactive (list (olive--interactive-reload-config current-prefix-arg)))
+(defun olive-clean (target)
+  "Remove hot-reload generated files and build outputs for TARGET."
+  (interactive (list (olive--interactive-reload-target current-prefix-arg)))
   (olive--command-in-project
-   (list "clean" (expand-file-name config))
-   (format "clean %s" config)
+   (list "clean" (expand-file-name target))
+   (format "clean %s" target)
    nil
    t))
 

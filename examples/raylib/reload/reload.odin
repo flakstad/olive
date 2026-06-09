@@ -4,7 +4,10 @@ import game ".."
 import olive_reload "../../../src/olive_reload"
 import ray "vendor:raylib"
 
-Game_State :: game.Game_State
+Olive_Module_Name :: "raylib"
+Olive_Odin_Args :: "-define:RAYLIB_SHARED=true"
+
+Reload_State :: game.Game_State
 
 host_init :: proc() {
   if !ray.IsWindowReady() {
@@ -19,20 +22,20 @@ host_shutdown :: proc() {
   }
 }
 
-init :: proc(state: ^Game_State) {
+init :: proc(state: ^Reload_State) {
   game.init(state)
 }
 
-on_load :: proc(state: ^Game_State) {
+on_load :: proc(state: ^Reload_State) {
   state.hud.reloads += 1
   state.hud.message = "code reloaded"
 }
 
-on_unload :: proc(state: ^Game_State) {
+on_unload :: proc(state: ^Reload_State) {
   state.hud.message = "unloading"
 }
 
-run :: proc(state: ^Game_State, host: ^olive_reload.Run_Host) {
+run :: proc(state: ^Reload_State, host: ^olive_reload.Run_Host) {
   if ray.WindowShouldClose() {
     olive_reload.request_exit(host)
     return
@@ -40,10 +43,10 @@ run :: proc(state: ^Game_State, host: ^olive_reload.Run_Host) {
   game.frame(state)
 }
 
-force_reload :: proc(state: ^Game_State) -> bool {
+force_reload :: proc(state: ^Reload_State) -> bool {
   return game.force_reload(state)
 }
 
-force_restart :: proc(state: ^Game_State) -> bool {
+force_restart :: proc(state: ^Reload_State) -> bool {
   return game.force_restart(state)
 }

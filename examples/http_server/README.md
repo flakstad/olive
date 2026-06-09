@@ -19,13 +19,13 @@ curl http://127.0.0.1:8099/status
 For reload:
 
 ```sh
-./olive run examples/http_server/reload/reload.conf
+./olive run examples/http_server/reload
 ```
 
 In another terminal:
 
 ```sh
-./olive watch examples/http_server/reload/reload.conf
+./olive watch examples/http_server/reload
 ```
 
 Edit `main.odin` and save. The watcher rebuilds the module, Olive reloads it

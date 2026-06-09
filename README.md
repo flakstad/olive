@@ -43,8 +43,12 @@ tick counter keeps going.
 Olive is meant to make the normal edit-build-run cycle feel more like a live
 development loop. Keep the program running, edit ordinary Odin files, and let
 the reload host pick up the rebuilt module without throwing away state. This is
-useful for games, local tools, servers, simulations, editors, and other programs
-where restarting the whole process interrupts the work.
+most useful for games, simulations, editors, UI tools, and other interactive
+programs where you have navigated or evolved the program into a state that is
+annoying to recreate after every rebuild. Odin builds quickly enough that a
+clean stop/build/run loop is still the right answer for many small tools,
+libraries, batch jobs, and programs where important state already lives outside
+the process.
 
 The development workflow has two moving parts:
 
@@ -73,8 +77,7 @@ odin run .
 The ordinary program lives in `main.odin`: it has a durable state type, an
 update proc that prints once per second, and a normal production `main`. The
 reload directory contains `reload.odin`, which adapts that program to Olive's
-development host, and `reload.conf`, which tells Olive what package to build,
-what state type to preserve, and where to put generated files.
+development host.
 
 For the starter, treat `reload/reload.odin` as generated wiring. Edit
 `main.odin` and leave the reload package alone unless you are changing how the
@@ -96,8 +99,9 @@ Add Olive to an existing project:
    `Program_State`.
 3. Add a small `reload` directory that wires Olive to your program. Start with
    `olive init` in a temporary directory and copy the generated `reload` shape.
-4. Point `reload/reload.conf` at your program package, state type, and update
-   proc.
+4. In `reload/reload.odin`, define `Reload_State :: your_package.Program_State`
+   and a `run` proc. Conventional hooks such as `init`, `on_load`, `on_unload`,
+   `force_reload`, and `force_restart` are detected when present.
 
 After that setup, normal iteration should happen in your program files, not in
 the reload package.
@@ -120,15 +124,84 @@ Or leave the watcher running:
 olive watch
 ```
 
-`olive run`, `olive build`, and `olive watch` use `reload/reload.conf` by
-default. Pass a config path only when your project uses a different location.
+`olive run`, `olive build`, and `olive watch` use `reload/` by default. Pass a
+reload directory only when your project uses a different location.
+
+If the adapter needs non-default settings, define conventional constants in
+`reload/reload.odin`:
+
+```odin
+Olive_Module_Name :: "my_game"
+Olive_Odin_Args :: "-define:RAYLIB_SHARED=true"
+Olive_Watch :: ".."
+Olive_Watch_Debounce_MS :: "150"
+```
+
+## Reload Adapter
+
+`reload/reload.odin` is the only file Olive reads to understand the reload
+setup. Keep it small: import your app package, name the durable state type, and
+forward Olive's lifecycle calls to ordinary app procs.
+
+The minimal adapter looks like this:
+
+```odin
+package reload
+
+import app ".."
+import olive_reload "../../../src/olive_reload"
+
+Reload_State :: app.Program_State
+
+run :: proc(state: ^Reload_State, host: ^olive_reload.Run_Host) {
+    _ = host
+    app.frame_or_tick(state)
+}
+```
+
+Required declarations:
+
+- `Reload_State :: app.Program_State`: the one root state type preserved by the
+  resident host.
+- `run :: proc(state: ^Reload_State, host: ^olive_reload.Run_Host)`: one small
+  unit of work. Return regularly so Olive can check for rebuilt code.
+
+Optional lifecycle hooks are detected by name when present:
+
+- `init :: proc(state: ^Reload_State)`: called once for the initial load. Use it
+  to mirror production startup state initialization.
+- `on_load :: proc(state: ^Reload_State)`: called after a successful reload, not
+  on the initial load.
+- `on_unload :: proc(state: ^Reload_State)`: called before unloading the current
+  generation.
+- `force_reload :: proc(state: ^Reload_State) -> bool`: return true to request a
+  reload check even if the library timestamp did not change.
+- `force_restart :: proc(state: ^Reload_State) -> bool`: return true to reset
+  durable state with the current compatible layout.
+- `host_init :: proc()`: called once in the resident host before state is
+  created. Use this for process-owned resources such as windows.
+- `host_shutdown :: proc()`: called once before the resident host exits.
+
+Optional adapter constants:
+
+- `Olive_Module_Name :: "name"`: basename for generated reload binaries.
+- `Olive_Odin_Args :: "-define:FOO=true"`: extra args passed to generated
+  `odin check` and `odin build` commands.
+- `Olive_Watch :: ".."`: comma-separated paths to poll for `.odin` changes,
+  relative to the reload directory.
+- `Olive_Watch_Debounce_MS :: "150"`: quiet period after a detected change
+  before rebuilding.
+
+Host hooks are for resources that should not be recreated on every reload. For
+example, the Raylib example opens the window in `host_init`, closes it in
+`host_shutdown`, and keeps drawing one frame per `run`.
 
 ## State Management
 
 Olive preserves one root state value across reloads. Model that root state as
-the durable state of the running program: world data, loaded documents, server
-configuration, caches, UI state, and pointers to subsystems that should survive
-code reloads.
+the durable state of the running program: world data, simulation state, loaded
+documents, UI state, and pointers to subsystems that should survive code
+reloads.
 
 You do not have to put everything in one flat struct. Prefer a root state that
 owns or points to smaller subsystem structs:
@@ -142,12 +215,12 @@ Program_State :: struct {
 ```
 
 Initialize durable state in your normal production startup path and mirror that
-through the reload adapter's optional `init` proc. Use `on_load` for reload-only
-work such as refreshing function tables, logging a reload, or reconnecting code
-that depends on the new module generation.
+through the reload adapter's conventional `init` proc when needed. Use `on_load`
+for reload-only work such as refreshing function tables, logging a reload, or
+reconnecting code that depends on the new module generation.
 
 The adapter's `run` proc should return regularly. For a game that usually means
-one frame; for a server, one request poll; for a worker, one small batch.
+one frame; for a simulation or editor, one tick, poll, or UI update.
 
 Changing proc bodies is the happy path: run stays alive, the next build is
 loaded, and state continues. Changing the layout of the root state type is
