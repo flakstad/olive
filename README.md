@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="olive.png" alt="Olive logo" width="96">
+</p>
+
 # Olive
 
 Olive is live-development tooling for Odin.
