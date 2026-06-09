@@ -64,7 +64,7 @@ reload workflow involved.
 
 ## Getting Started
 
-Start from scratch:
+### Start From Scratch
 
 ```sh
 ./olive init scratch
@@ -92,7 +92,7 @@ built module is ready to load.
 generated starter is still a normal Odin program before you run it through
 Olive.
 
-Add Olive to an existing project:
+### Add Olive To An Existing Project
 
 1. Keep your existing `main` proc as the production entry point.
 2. Put durable program data in one root state type, for example
@@ -233,7 +233,6 @@ memory layout. When that happens, stop and restart `olive run`. Any
 The examples are the best way to see the reload pattern in context:
 
 - [`examples/raylib`](examples/raylib/README.md): a Raylib game loop.
-- [`examples/http_server`](examples/http_server/README.md): an idle-friendly local HTTP server.
 - [`examples/local_tool`](examples/local_tool/README.md): a long-running local worker with composed durable state.
 
 ## Scratch Eval

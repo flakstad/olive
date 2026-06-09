@@ -922,24 +922,24 @@ Return non-nil when LINE was a structured event."
       (process-put process 'olive-reload-pending "")
       (olive--reload-process-filter process "\n"))))
 
-(defun olive--run-reload-command (directory config &optional json subcommand)
-  "Run `olive SUBCOMMAND CONFIG' in DIRECTORY.
+(defun olive--run-reload-command (directory target &optional json subcommand)
+  "Run `olive SUBCOMMAND TARGET' in DIRECTORY.
 SUBCOMMAND defaults to `run'. When JSON is non-nil, pass `--json' and parse
 structured reload events."
   (let* ((directory (file-name-as-directory (expand-file-name directory)))
-         (config (expand-file-name config))
+         (target (expand-file-name target))
          (subcommand (or subcommand "run"))
          (buffer (olive--reload-buffer directory subcommand))
          (stderr-buffer (generate-new-buffer " *olive-reload-stderr*"))
          (compiled (olive--compiled-command-or-error))
-         (args (append (list subcommand config)
+         (args (append (list subcommand target)
                        (when json (list "--json")))))
     (with-current-buffer buffer
       (let ((inhibit-read-only t))
         (goto-char (point-max))
         (insert (format "$ olive %s %s%s\n\n"
                         subcommand
-                        config
+                        target
                         (if json " --json" "")))))
     (let ((default-directory directory))
       (display-buffer buffer)
