@@ -15,8 +15,6 @@ state is preserved.
 Olive also includes scratch eval helpers for quick package-context experiments.
 They generate ordinary Odin and use the real Odin compiler.
 
-![Olive raylib demo](olive-raylib-demo.gif)
-
 ## Install
 
 Build the CLI:
@@ -69,6 +67,8 @@ The development workflow has two moving parts:
 Your production program stays separate from this. Keep a normal `main` proc and
 run it with `odin run .` or build it with `odin build .` when you do not want the
 reload workflow involved.
+
+![Olive raylib demo](olive-raylib-demo.gif)
 
 ## Getting Started
 
