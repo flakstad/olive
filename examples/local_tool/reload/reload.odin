@@ -7,17 +7,17 @@ import "core:time"
 Reload_State :: tool.Tool_State
 
 init :: proc(state: ^Reload_State) {
-    tool.init(state)
+  tool.init(state)
 }
 
 on_load :: proc(state: ^Reload_State) {
-    state.report.reloads += 1
-    state.report.summary = "code reloaded; durable subsystem state preserved"
+  state.report.reloads += 1
+  state.report.summary = "code reloaded; durable subsystem state preserved"
 }
 
 run :: proc(state: ^Reload_State, host: ^olive_reload.Run_Host) {
-    _ = host
-    tool.process_batch(state)
+  _ = host
+  tool.process_batch(state)
 
-    time.sleep(300 * time.Millisecond)
+  time.sleep(300 * time.Millisecond)
 }

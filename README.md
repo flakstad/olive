@@ -8,7 +8,7 @@ Olive is live-development tooling for Odin. It gives you hot reload for
 long-running Odin programs: change code, let Olive rebuild it, and load it into
 the running process without losing the program state you were testing.
 
-For hot reload, you add a tiny development-only `reload/reload.odin` file to
+All that's required is adding a tiny development-only `reload/reload.odin` file to
 your project. During development, you start the program with `olive run`
 instead of `odin run .`, and Olive uses that reload file as the dev entry
 point.
@@ -118,9 +118,9 @@ subsystem structs:
 
 ```odin
 Program_State :: struct {
-    world:    World_State,
-    renderer: ^Renderer_State,
-    assets:   ^Asset_Cache,
+  world:    World_State,
+  renderer: ^Renderer_State,
+  assets:   ^Asset_Cache,
 }
 ```
 
@@ -144,8 +144,8 @@ import olive_reload "../../../src/olive_reload"
 Reload_State :: app.Program_State
 
 run :: proc(state: ^Reload_State, host: ^olive_reload.Run_Host) {
-    _ = host
-    app.frame_or_tick(state)
+  _ = host
+  app.frame_or_tick(state)
 }
 ```
 
@@ -243,7 +243,7 @@ Add resource paths and a hook to the adapter:
 Olive_Watch_Resources :: "../assets,../templates"
 
 on_resource_change :: proc(state: ^Reload_State, path: string) {
-    app.reload_resource(state, path)
+  app.reload_resource(state, path)
 }
 ```
 
@@ -257,7 +257,7 @@ place to push a fresh snapshot after a reload:
 
 ```odin
 on_load :: proc(state: ^Reload_State) {
-    app.broadcast_snapshot_to_connected_clients(state)
+  app.broadcast_snapshot_to_connected_clients(state)
 }
 ```
 
@@ -286,7 +286,7 @@ For example, try a call next to the code it exercises:
 
 ```odin
 add :: proc(a, b: int) -> int {
-    return a + b
+  return a + b
 }
 
 // add(5, 2)  <cursor>
