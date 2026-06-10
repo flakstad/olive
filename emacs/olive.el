@@ -153,7 +153,7 @@ For Odin this is usually the directory containing the current file."
 (defun olive--compiled-command-or-error ()
   "Return the compiled olive executable or signal a user-facing error."
   (or (olive--compiled-command)
-      (user-error "Compiled olive CLI not found; run `odin build cmd/olive -out:olive`")))
+      (user-error "Compiled olive CLI not found; run `odin build cmd/olive`")))
 
 (defun olive--process-command (args)
   "Return a process command for olive ARGS."
