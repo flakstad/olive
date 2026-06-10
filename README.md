@@ -329,6 +329,15 @@ The Emacs integration lives in [`emacs/olive.el`](emacs/olive.el).
 
 Build `./olive` first, or customize `olive-command`.
 
+## Feedback
+
+Pull requests, issues, and feedback are welcome. Bug reports and notes from
+trying Olive in real Odin projects are useful.
+
+## License
+
+MIT. See [`LICENSE`](LICENSE).
+
 ## Inspiration
 
 Olive's hot-reload workflow is inspired in part by Karl Zylinski's Odin Raylib
