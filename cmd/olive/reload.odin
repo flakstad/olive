@@ -26,9 +26,12 @@ Reload_Target :: struct {
     module_name:   string,
     watch_paths:   string,
     resource_watch_paths: string,
+    watch_ignore_names: string,
     watch_debounce_ms: string,
     odin_args: string,
 }
+
+DEFAULT_WATCH_IGNORE :: ".git,.olive,.worktrees"
 
 reload_usage :: proc() {
     fmt.println("usage:")
@@ -61,44 +64,63 @@ reload_source_path_in_dir :: proc(dir: string) -> string {
     return join_or_exit([]string{dir, "reload.odin"})
 }
 
+next_source_line :: proc(rest: ^string) -> (line: string, ok: bool) {
+    if len(rest^) == 0 {
+        return "", false
+    }
+    line = rest^
+    next_start := len(rest^)
+    if newline := strings.index(rest^, "\n"); newline >= 0 {
+        line = rest^[:newline]
+        next_start = newline + 1
+    }
+    rest^ = rest^[next_start:]
+    return line, true
+}
+
+declaration_expr_on_line :: proc(line, name: string) -> (expr: string, ok: bool) {
+    trimmed := strings.trim_space(line)
+    if !strings.has_prefix(trimmed, name) {
+        return "", false
+    }
+    after_name := strings.trim_left(trimmed[len(name):], " \t")
+    if !strings.has_prefix(after_name, "::") {
+        return "", false
+    }
+    return strings.trim_space(after_name[len("::"):]), true
+}
+
+quoted_string_expr :: proc(expr: string) -> (value: string, ok: bool) {
+    if len(expr) >= 2 && expr[0] == '"' && expr[len(expr)-1] == '"' {
+        return strings.clone(expr[1:len(expr)-1]), true
+    }
+    return "", false
+}
+
 has_conventional_proc :: proc(source, name: string) -> bool {
     rest := source
-    for len(rest) > 0 {
-        line := rest
-        next_start := len(rest)
-        if newline := strings.index(rest, "\n"); newline >= 0 {
-            line = rest[:newline]
-            next_start = newline + 1
+    for {
+        line, line_ok := next_source_line(&rest)
+        if !line_ok {
+            break
         }
-        trimmed := strings.trim_space(line)
-        if strings.has_prefix(trimmed, name) {
-            after := strings.trim_left(trimmed[len(name):], " \t")
-            if strings.has_prefix(after, "::") && strings.contains(after, "proc") {
-                return true
-            }
+        if expr, found := declaration_expr_on_line(line, name); found && strings.contains(expr, "proc") {
+            return true
         }
-        rest = rest[next_start:]
     }
     return false
 }
 
 has_reload_state_alias :: proc(source: string) -> bool {
     rest := source
-    for len(rest) > 0 {
-        line := rest
-        next_start := len(rest)
-        if newline := strings.index(rest, "\n"); newline >= 0 {
-            line = rest[:newline]
-            next_start = newline + 1
+    for {
+        line, line_ok := next_source_line(&rest)
+        if !line_ok {
+            break
         }
-        trimmed := strings.trim_space(line)
-        if strings.has_prefix(trimmed, "Reload_State") {
-            after := strings.trim_left(trimmed[len("Reload_State"):], " \t")
-            if strings.has_prefix(after, "::") {
-                return true
-            }
+        if _, found := declaration_expr_on_line(line, "Reload_State"); found {
+            return true
         }
-        rest = rest[next_start:]
     }
     return false
 }
@@ -106,45 +128,30 @@ has_reload_state_alias :: proc(source: string) -> bool {
 named_import_path :: proc(source, alias: string) -> (path: string, ok: bool) {
     rest := source
     prefix := fmt.tprintf("import %s ", alias)
-    for len(rest) > 0 {
-        line := rest
-        next_start := len(rest)
-        if newline := strings.index(rest, "\n"); newline >= 0 {
-            line = rest[:newline]
-            next_start = newline + 1
+    for {
+        line, line_ok := next_source_line(&rest)
+        if !line_ok {
+            break
         }
         trimmed := strings.trim_space(line)
         if strings.has_prefix(trimmed, prefix) {
             value := strings.trim_space(trimmed[len(prefix):])
-            if len(value) >= 2 && value[0] == '"' && value[len(value)-1] == '"' {
-                return strings.clone(value[1:len(value)-1]), true
-            }
+            return quoted_string_expr(value)
         }
-        rest = rest[next_start:]
     }
     return "", false
 }
 
 conventional_string_value :: proc(source, name: string) -> (value: string, ok: bool) {
     rest := source
-    for len(rest) > 0 {
-        line := rest
-        next_start := len(rest)
-        if newline := strings.index(rest, "\n"); newline >= 0 {
-            line = rest[:newline]
-            next_start = newline + 1
+    for {
+        line, line_ok := next_source_line(&rest)
+        if !line_ok {
+            break
         }
-        trimmed := strings.trim_space(line)
-        if strings.has_prefix(trimmed, name) {
-            after := strings.trim_left(trimmed[len(name):], " \t")
-            if strings.has_prefix(after, "::") {
-                expr := strings.trim_space(after[len("::"):])
-                if len(expr) >= 2 && expr[0] == '"' && expr[len(expr)-1] == '"' {
-                    return strings.clone(expr[1:len(expr)-1]), true
-                }
-            }
+        if expr, found := declaration_expr_on_line(line, name); found {
+            return quoted_string_expr(expr)
         }
-        rest = rest[next_start:]
     }
     return "", false
 }
@@ -179,6 +186,7 @@ read_reload_target :: proc(reload_dir: string) -> (Reload_Target, string, bool) 
         build_dir = strings.clone("../.olive/reload/build"),
         module_name = strings.clone("reload"),
         watch_paths = strings.clone(".."),
+        watch_ignore_names = strings.clone(DEFAULT_WATCH_IGNORE),
         watch_debounce_ms = strings.clone("150"),
     }
     if has_conventional_proc(source, "init") {
@@ -215,6 +223,10 @@ read_reload_target :: proc(reload_dir: string) -> (Reload_Target, string, bool) 
     }
     if value, found := conventional_string_value(source, "Olive_Watch_Resources"); found {
         cfg.resource_watch_paths = value
+    }
+    if value, found := conventional_string_value(source, "Olive_Watch_Ignore"); found {
+        delete(cfg.watch_ignore_names)
+        cfg.watch_ignore_names = value
     }
     if value, found := conventional_string_value(source, "Olive_Watch_Debounce_MS"); found {
         delete(cfg.watch_debounce_ms)
@@ -343,8 +355,8 @@ reload_module_source :: proc(cfg: Reload_Target, module_dir, package_path, runti
     return strings.clone(strings.to_string(b))
 }
 
-comma_paths_for :: proc(cfg: Reload_Target, value: string, fallback: string = "") -> [dynamic]string {
-    paths := make([dynamic]string)
+comma_values_for :: proc(value: string) -> [dynamic]string {
+    values := make([dynamic]string)
     rest := value
     for {
         part := rest
@@ -355,17 +367,40 @@ comma_paths_for :: proc(cfg: Reload_Target, value: string, fallback: string = ""
         }
         trimmed := trim(part)
         if trimmed != "" {
-            append(&paths, path_relative_to_reload_root(cfg, trimmed))
+            append(&values, strings.clone(trimmed))
         }
         if next == "" {
             break
         }
         rest = next
     }
+    return values
+}
+
+comma_names_for :: proc(value: string) -> [dynamic]string {
+    return comma_values_for(value)
+}
+
+comma_paths_for :: proc(cfg: Reload_Target, value: string, fallback: string = "") -> [dynamic]string {
+    names := comma_values_for(value)
+    defer delete_string_list(names)
+    paths := make([dynamic]string)
+    for name in names {
+        append(&paths, path_relative_to_reload_root(cfg, name))
+    }
     if len(paths) == 0 && fallback != "" {
         append(&paths, path_relative_to_reload_root(cfg, fallback))
     }
     return paths
+}
+
+watch_name_ignored :: proc(name: string, ignore_names: []string) -> bool {
+    for ignored in ignore_names {
+        if name == ignored {
+            return true
+        }
+    }
+    return false
 }
 
 reload_host_source :: proc(cfg: Reload_Target, host_dir, package_path, runtime_path, module_binary_path: string) -> string {
@@ -403,13 +438,19 @@ reload_host_source :: proc(cfg: Reload_Target, host_dir, package_path, runtime_p
     fmt.sbprintf(&b, "    state := app.%s{{}}\n", cfg.state_type)
     strings.write_string(&b, "    symbols := App_Symbols{}\n")
     resource_paths := comma_paths_for(cfg, cfg.resource_watch_paths)
-    defer delete_watch_paths(resource_paths)
+    defer delete_string_list(resource_paths)
     if len(resource_paths) > 0 {
         strings.write_string(&b, "    resource_paths := make([dynamic]string)\n")
         for path in resource_paths {
             fmt.sbprintf(&b, "    append(&resource_paths, %q)\n", path)
         }
-        strings.write_string(&b, "    status := olive_reload.run_host_with_resources(module_path, &symbols, &state, run, event_handler(), force_reload, force_restart, reset_state, resource_paths[:], resource_changed)\n")
+        ignore_names := comma_names_for(cfg.watch_ignore_names)
+        defer delete_string_list(ignore_names)
+        strings.write_string(&b, "    resource_ignore_names := make([dynamic]string)\n")
+        for name in ignore_names {
+            fmt.sbprintf(&b, "    append(&resource_ignore_names, %q)\n", name)
+        }
+        strings.write_string(&b, "    status := olive_reload.run_host_with_resources_and_ignores(module_path, &symbols, &state, run, event_handler(), force_reload, force_restart, reset_state, resource_paths[:], resource_changed, resource_ignore_names[:])\n")
     } else {
         strings.write_string(&b, "    status := olive_reload.run_host(module_path, &symbols, &state, run, event_handler(), force_reload, force_restart, reset_state)\n")
     }
@@ -506,6 +547,7 @@ print_reload_paths :: proc(reload_dir: string, json := false) {
         print_json_field("package", cfg.package_path)
         print_json_field("watch", cfg.watch_paths)
         print_json_field("resource_watch", cfg.resource_watch_paths)
+        print_json_field("watch_ignore", cfg.watch_ignore_names)
         print_json_field("watch_debounce_ms", cfg.watch_debounce_ms)
         print_json_field("odin_args", cfg.odin_args)
         print_json_field("run_command", fmt.tprintf("olive run %s", reload_dir))
@@ -526,6 +568,7 @@ print_reload_paths :: proc(reload_dir: string, json := false) {
     fmt.printf("package: %s\n", cfg.package_path)
     fmt.printf("watch: %s\n", cfg.watch_paths)
     fmt.printf("resource_watch: %s\n", cfg.resource_watch_paths)
+    fmt.printf("watch_ignore: %s\n", cfg.watch_ignore_names)
     fmt.printf("watch_debounce_ms: %s\n", cfg.watch_debounce_ms)
     fmt.printf("odin_args: %s\n", cfg.odin_args)
     fmt.printf("run_command: olive run %s\n", reload_dir)
@@ -555,7 +598,7 @@ clean_reload_paths :: proc(reload_dir: string) -> int {
     return 0
 }
 
-newest_odin_write_time :: proc(path: string) -> (time.Time, bool) {
+newest_odin_write_time :: proc(path: string, ignore_names: []string = nil) -> (time.Time, bool) {
     info, stat_err := os.stat(path, context.temp_allocator)
     if stat_err != nil {
         return {}, false
@@ -577,7 +620,8 @@ newest_odin_write_time :: proc(path: string) -> (time.Time, bool) {
         return {}, false
     }
     for entry in entries {
-        if entry.name == "." || entry.name == ".." || entry.name == ".olive" {
+        if entry.name == "." || entry.name == ".." ||
+            (entry.type == .Directory && watch_name_ignored(entry.name, ignore_names)) {
             continue
         }
         child := entry.fullpath
@@ -585,7 +629,7 @@ newest_odin_write_time :: proc(path: string) -> (time.Time, bool) {
             child = join_or_exit([]string{path, entry.name})
             defer delete(child)
         }
-        child_time, child_found := newest_odin_write_time(child)
+        child_time, child_found := newest_odin_write_time(child, ignore_names)
         if child_found {
             if !found || time.time_to_unix_nano(child_time) > time.time_to_unix_nano(newest) {
                 newest = child_time
@@ -597,42 +641,21 @@ newest_odin_write_time :: proc(path: string) -> (time.Time, bool) {
 }
 
 watch_paths_for :: proc(cfg: Reload_Target) -> [dynamic]string {
-    paths := make([dynamic]string)
-    rest := cfg.watch_paths
-    for {
-        part := rest
-        next := ""
-        if comma := strings.index(rest, ","); comma >= 0 {
-            part = rest[:comma]
-            next = rest[comma+1:]
-        }
-        trimmed := trim(part)
-        if trimmed != "" {
-            append(&paths, path_relative_to_reload_root(cfg, trimmed))
-        }
-        if next == "" {
-            break
-        }
-        rest = next
-    }
-    if len(paths) == 0 {
-        append(&paths, path_relative_to_reload_root(cfg, cfg.package_path))
-    }
-    return paths
+    return comma_paths_for(cfg, cfg.watch_paths, cfg.package_path)
 }
 
-delete_watch_paths :: proc(paths: [dynamic]string) {
-    for path in paths {
-        delete(path)
+delete_string_list :: proc(values: [dynamic]string) {
+    for value in values {
+        delete(value)
     }
-    delete(paths)
+    delete(values)
 }
 
-newest_watch_write_time :: proc(paths: []string) -> (time.Time, bool) {
+newest_watch_write_time :: proc(paths: []string, ignore_names: []string = nil) -> (time.Time, bool) {
     newest := time.Time{}
     found := false
     for path in paths {
-        path_time, path_found := newest_odin_write_time(path)
+        path_time, path_found := newest_odin_write_time(path, ignore_names)
         if path_found {
             if !found || time.time_to_unix_nano(path_time) > time.time_to_unix_nano(newest) {
                 newest = path_time
@@ -678,12 +701,14 @@ reload_check :: proc(reload_dir: string) -> int {
     defer delete(reload_package_path)
     runtime_path := path_relative_to_reload_root(cfg, cfg.runtime_path)
     defer delete(runtime_path)
+    ignore_names := comma_names_for(cfg.watch_ignore_names)
+    defer delete_string_list(ignore_names)
 
     if !os.is_directory(reload_package_path) {
         fmt.eprintln("package path is not a directory: ", reload_package_path)
         ok = false
     } else {
-        _, found_sources := newest_odin_write_time(reload_package_path)
+        _, found_sources := newest_odin_write_time(reload_package_path, ignore_names[:])
         if !found_sources {
             fmt.eprintln("package path contains no .odin files: ", reload_package_path)
             ok = false
@@ -714,7 +739,7 @@ reload_check :: proc(reload_dir: string) -> int {
         ok = false
     }
     watch_paths := watch_paths_for(cfg)
-    defer delete_watch_paths(watch_paths)
+    defer delete_string_list(watch_paths)
     watch_found := false
     for path in watch_paths {
         if !os.exists(path) {
@@ -722,7 +747,7 @@ reload_check :: proc(reload_dir: string) -> int {
             ok = false
             continue
         }
-        if _, found_sources := newest_odin_write_time(path); found_sources {
+        if _, found_sources := newest_odin_write_time(path, ignore_names[:]); found_sources {
             watch_found = true
         } else {
             fmt.eprintln("watch path contains no .odin files: ", path)
@@ -738,7 +763,7 @@ reload_check :: proc(reload_dir: string) -> int {
         ok = false
     }
     resource_paths := comma_paths_for(cfg, cfg.resource_watch_paths)
-    defer delete_watch_paths(resource_paths)
+    defer delete_string_list(resource_paths)
     for path in resource_paths {
         if !os.exists(path) {
             fmt.eprintln("resource watch path does not exist: ", path)
@@ -899,9 +924,11 @@ reload_build_or_exit :: proc(reload_dir: string, host: bool) -> (Reload_Target, 
 
 reload_watch :: proc(reload_dir: string) -> int {
     cfg, _, status := reload_build_status_or_exit(reload_dir, false, true)
+    ignore_names := comma_names_for(cfg.watch_ignore_names)
+    defer delete_string_list(ignore_names)
     watch_paths := watch_paths_for(cfg)
-    defer delete_watch_paths(watch_paths)
-    last_write, found := newest_watch_write_time(watch_paths[:])
+    defer delete_string_list(watch_paths)
+    last_write, found := newest_watch_write_time(watch_paths[:], ignore_names[:])
     if !found {
         fmt.eprintln("watch found no Odin files under configured watch paths")
         return 1
@@ -915,7 +942,7 @@ reload_watch :: proc(reload_dir: string) -> int {
     debounce := watch_debounce_duration(cfg)
     for {
         time.sleep(250 * time.Millisecond)
-        current_write, current_found := newest_watch_write_time(watch_paths[:])
+        current_write, current_found := newest_watch_write_time(watch_paths[:], ignore_names[:])
         if !current_found {
             continue
         }
@@ -924,7 +951,7 @@ reload_watch :: proc(reload_dir: string) -> int {
         }
         last_write = current_write
         time.sleep(debounce)
-        settled_write, settled_found := newest_watch_write_time(watch_paths[:])
+        settled_write, settled_found := newest_watch_write_time(watch_paths[:], ignore_names[:])
         if settled_found {
             last_write = settled_write
         }

@@ -139,6 +139,7 @@ Olive_Module_Name :: "my_game"
 Olive_Odin_Args :: "-define:RAYLIB_SHARED=true"
 Olive_Watch :: ".."
 Olive_Watch_Resources :: "../assets"
+Olive_Watch_Ignore :: ".git,.olive,.worktrees"
 Olive_Watch_Debounce_MS :: "150"
 ```
 
@@ -198,6 +199,9 @@ Optional adapter constants:
   relative to the reload directory.
 - `Olive_Watch_Resources :: "../assets,../templates"`: comma-separated paths to
   poll for non-code resource changes, relative to the reload directory.
+- `Olive_Watch_Ignore :: ".git,.olive,.worktrees"`: comma-separated directory
+  names to skip while scanning watched source and resource paths. Names match
+  exact path components. Define an empty string to scan all directories.
 - `Olive_Watch_Debounce_MS :: "150"`: quiet period after a detected change
   before rebuilding.
 

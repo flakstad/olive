@@ -199,7 +199,9 @@ start_session :: proc(module_path: string, app_symbols: ^$T, state: ^$S) -> (Ses
     if !ok {
         return {}, message, false
     }
-    _, symbols_ok := dynlib.initialize_symbols(app_symbols, shadow_library_path(module_path, 1))
+    shadow := shadow_library_path(module_path, 1)
+    defer delete(shadow)
+    _, symbols_ok := dynlib.initialize_symbols(app_symbols, shadow)
     if !symbols_ok {
         unload_core(&core, rawptr(state))
         return {}, strings.clone("failed to load app symbols"), false
@@ -266,7 +268,16 @@ poll_session :: proc(session: ^Session, app_symbols: ^$T, state: ^$S, init_state
     return Reload_Event{kind = .Reloaded, generation = session.generation}, true
 }
 
-resource_write_time :: proc(path: string) -> (time.Time, string, bool) {
+resource_name_ignored :: proc(name: string, ignore_names: []string) -> bool {
+    for ignored in ignore_names {
+        if name == ignored {
+            return true
+        }
+    }
+    return false
+}
+
+resource_write_time :: proc(path: string, ignore_names: []string = nil) -> (time.Time, string, bool) {
     info, stat_err := os.stat(path, context.temp_allocator)
     if stat_err != nil {
         return {}, "", false
@@ -289,7 +300,8 @@ resource_write_time :: proc(path: string) -> (time.Time, string, bool) {
         return {}, "", false
     }
     for entry in entries {
-        if entry.name == "." || entry.name == ".." || entry.name == ".olive" || entry.name == ".git" {
+        if entry.name == "." || entry.name == ".." ||
+            (entry.type == .Directory && resource_name_ignored(entry.name, ignore_names)) {
             continue
         }
         child := entry.fullpath
@@ -300,7 +312,7 @@ resource_write_time :: proc(path: string) -> (time.Time, string, bool) {
             }
             child = joined
         }
-        child_time, child_path, child_found := resource_write_time(child)
+        child_time, child_path, child_found := resource_write_time(child, ignore_names)
         if child_found {
             if !found || time.time_to_unix_nano(child_time) > time.time_to_unix_nano(newest) {
                 if found {
@@ -317,12 +329,12 @@ resource_write_time :: proc(path: string) -> (time.Time, string, bool) {
     return newest, newest_path, found
 }
 
-newest_resource_write_time :: proc(paths: []string) -> (time.Time, string, bool) {
+newest_resource_write_time :: proc(paths: []string, ignore_names: []string = nil) -> (time.Time, string, bool) {
     newest := time.Time{}
     newest_path := ""
     found := false
     for path in paths {
-        path_time, path_name, path_found := resource_write_time(path)
+        path_time, path_name, path_found := resource_write_time(path, ignore_names)
         if path_found {
             if !found || time.time_to_unix_nano(path_time) > time.time_to_unix_nano(newest) {
                 if found {
@@ -444,6 +456,36 @@ run_host_with_resources :: proc(
     on_resource_change: proc(^T, ^S, string),
     resource_debounce := 150 * time.Millisecond,
 ) -> int {
+    return run_host_with_resources_and_ignores(
+        module_path,
+        app_symbols,
+        state,
+        run,
+        on_event,
+        force_reload,
+        force_restart,
+        init_state,
+        resource_paths,
+        on_resource_change,
+        []string{".git", ".olive"},
+        resource_debounce,
+    )
+}
+
+run_host_with_resources_and_ignores :: proc(
+    module_path: string,
+    app_symbols: ^$T,
+    state: ^$S,
+    run: proc(^T, ^S, ^Run_Host),
+    on_event := default_event_handler,
+    force_reload: proc(^T, ^S) -> bool = nil,
+    force_restart: proc(^T, ^S) -> bool = nil,
+    init_state: proc(^S) = nil,
+    resource_paths: []string,
+    on_resource_change: proc(^T, ^S, string),
+    resource_ignore_names: []string,
+    resource_debounce := 150 * time.Millisecond,
+) -> int {
     session, message, ok := start_session(module_path, app_symbols, state)
     if !ok {
         on_event(Reload_Event{kind = .Reload_Failed, message = message})
@@ -456,7 +498,7 @@ run_host_with_resources :: proc(
     host := Run_Host{}
     last_resource_write := time.Time{}
     if len(resource_paths) > 0 && on_resource_change != nil {
-        initial_resource_write, initial_resource_path, initial_resource_found := newest_resource_write_time(resource_paths)
+        initial_resource_write, initial_resource_path, initial_resource_found := newest_resource_write_time(resource_paths, resource_ignore_names)
         if initial_resource_found {
             last_resource_write = initial_resource_write
             delete(initial_resource_path)
@@ -485,13 +527,13 @@ run_host_with_resources :: proc(
             on_event(event)
         }
         if len(resource_paths) > 0 && on_resource_change != nil {
-            resource_write, resource_path, resource_found := newest_resource_write_time(resource_paths)
+            resource_write, resource_path, resource_found := newest_resource_write_time(resource_paths, resource_ignore_names)
             if resource_found {
                 changed_resource := time.time_to_unix_nano(resource_write) != time.time_to_unix_nano(last_resource_write)
                 if changed_resource {
                     delete(resource_path)
                     time.sleep(resource_debounce)
-                    resource_write, resource_path, resource_found = newest_resource_write_time(resource_paths)
+                    resource_write, resource_path, resource_found = newest_resource_write_time(resource_paths, resource_ignore_names)
                     if resource_found {
                         last_resource_write = resource_write
                         on_resource_change(app_symbols, state, resource_path)

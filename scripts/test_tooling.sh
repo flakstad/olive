@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 odin check cmd/olive
+odin test cmd/olive -define:ODIN_TEST_LOG_LEVEL=warning
 odin test tests -define:ODIN_TEST_LOG_LEVEL=warning
 emacs -Q --batch -f batch-byte-compile emacs/olive.el
 rm -f emacs/olive.elc
