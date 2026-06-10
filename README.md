@@ -64,7 +64,7 @@ moved to a specific place in a game, an editor opened on a deep document state,
 a UI navigated to a nested screen, or a simulation evolved to an interesting
 moment.
 
-For small CLIs, libraries, batch jobs, and programs whose state already lives
+For CLIs, libraries, stateless web servers, and other programs whose state already lives
 outside the process, plain stop/build/run may still be better.
 
 ## How Hot Reload Works
