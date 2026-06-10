@@ -15,6 +15,8 @@ state is preserved.
 Olive also includes scratch eval helpers for quick package-context experiments.
 They generate ordinary Odin and use the real Odin compiler.
 
+![Olive raylib demo](olive-raylib-demo.gif)
+
 ## Install
 
 Build the CLI:
@@ -41,6 +43,8 @@ cd scratch
 Now edit the printed text in `main.odin`. Olive builds the changed code and
 reloads it into the running program without resetting its durable state, so the
 tick counter keeps going.
+
+![Olive simple demo](olive-simple-demo.gif)
 
 ## Hot Reload
 
@@ -292,6 +296,8 @@ The examples are the best way to see the reload pattern in context:
 - [`examples/local_tool`](examples/local_tool/README.md): a long-running local worker with composed durable state.
 
 ## Scratch Eval
+
+![Olive eval demo](olive-eval-demo.gif)
 
 Scratch eval is mostly intended for editor integrations. From Emacs, or another
 editor integration, you can run a selected expression, the current line, a proc
