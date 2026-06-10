@@ -1,7 +1,7 @@
 package reload
 
 import tool ".."
-import olive_reload "../../../src/olive_reload"
+import olive_reload "../.olive/reload/runtime/olive_reload"
 import "core:time"
 
 Reload_State :: tool.Tool_State

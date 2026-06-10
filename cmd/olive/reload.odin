@@ -21,8 +21,6 @@ Reload_Target :: struct {
   force_restart_name: string,
   host_init_name: string,
   host_shutdown_name: string,
-  generated_dir: string,
-  build_dir:     string,
   module_name:   string,
   watch_paths:   string,
   resource_watch_paths: string,
@@ -32,6 +30,8 @@ Reload_Target :: struct {
 }
 
 DEFAULT_WATCH_IGNORE :: ".git,.olive,.worktrees"
+DEFAULT_MANAGED_RUNTIME_PATH :: "../.olive/reload/runtime/olive_reload"
+OLIVE_RELOAD_RUNTIME_SOURCE :: #load("../../src/olive_reload/reload.odin")
 
 reload_usage :: proc() {
   fmt.println("usage:")
@@ -174,7 +174,7 @@ read_reload_target :: proc(reload_dir: string) -> (Reload_Target, string, bool) 
 
   runtime_path, runtime_found := named_import_path(source, "olive_reload")
   if !runtime_found {
-    runtime_path = olive_reload_runtime_path_or_exit(reload_dir)
+    runtime_path = strings.clone(DEFAULT_MANAGED_RUNTIME_PATH)
   }
   cfg := Reload_Target{
     root = strings.clone(reload_dir),
@@ -182,8 +182,6 @@ read_reload_target :: proc(reload_dir: string) -> (Reload_Target, string, bool) 
     runtime_path = runtime_path,
     state_type = strings.clone("Reload_State"),
     run_name = strings.clone("run"),
-    generated_dir = strings.clone("../.olive/reload/generated"),
-    build_dir = strings.clone("../.olive/reload/build"),
     module_name = strings.clone("reload"),
     watch_paths = strings.clone(".."),
     watch_ignore_names = strings.clone(DEFAULT_WATCH_IGNORE),
@@ -474,10 +472,10 @@ Reload_Paths :: struct {
 }
 
 reload_paths_for :: proc(cfg: Reload_Target) -> Reload_Paths {
-  generated_root := path_relative_to_reload_root(cfg, cfg.generated_dir)
+  generated_root := path_relative_to_reload_root(cfg, "../.olive/reload/generated")
   module_dir := join_or_exit([]string{generated_root, "module"})
   host_dir := join_or_exit([]string{generated_root, "host"})
-  build_dir := path_relative_to_reload_root(cfg, cfg.build_dir)
+  build_dir := path_relative_to_reload_root(cfg, "../.olive/reload/build")
   module_binary := join_or_exit([]string{build_dir, fmt.tprintf("%s.%s", cfg.module_name, dynlib.LIBRARY_FILE_EXTENSION)})
   host_binary := join_or_exit([]string{build_dir, fmt.tprintf("%s_host", cfg.module_name)})
   return Reload_Paths{
@@ -499,6 +497,19 @@ read_reload_dir_or_exit :: proc(reload_dir: string) -> (Reload_Target, Reload_Pa
     os.exit(1)
   }
   return cfg, reload_paths_for(cfg)
+}
+
+write_managed_runtime_or_exit :: proc(cfg: Reload_Target) {
+  if cfg.runtime_path != DEFAULT_MANAGED_RUNTIME_PATH {
+    return
+  }
+
+  runtime_path := path_relative_to_reload_root(cfg, cfg.runtime_path)
+  defer delete(runtime_path)
+  ensure_directory_or_exit(runtime_path)
+  runtime_file := join_or_exit([]string{runtime_path, "reload.odin"})
+  defer delete(runtime_file)
+  write_file_or_exit(runtime_file, string(OLIVE_RELOAD_RUNTIME_SOURCE))
 }
 
 json_string :: proc(value: string) -> string {
@@ -545,6 +556,7 @@ print_reload_paths :: proc(reload_dir: string, json := false) {
     print_json_field("module_binary", paths.module_binary)
     print_json_field("host_binary", paths.host_binary)
     print_json_field("package", cfg.package_path)
+    print_json_field("runtime", cfg.runtime_path)
     print_json_field("watch", cfg.watch_paths)
     print_json_field("resource_watch", cfg.resource_watch_paths)
     print_json_field("watch_ignore", cfg.watch_ignore_names)
@@ -566,6 +578,7 @@ print_reload_paths :: proc(reload_dir: string, json := false) {
   fmt.printf("module_binary: %s\n", paths.module_binary)
   fmt.printf("host_binary: %s\n", paths.host_binary)
   fmt.printf("package: %s\n", cfg.package_path)
+  fmt.printf("runtime: %s\n", cfg.runtime_path)
   fmt.printf("watch: %s\n", cfg.watch_paths)
   fmt.printf("resource_watch: %s\n", cfg.resource_watch_paths)
   fmt.printf("watch_ignore: %s\n", cfg.watch_ignore_names)
@@ -584,17 +597,29 @@ remove_path_if_exists :: proc(path: string) -> bool {
 }
 
 clean_reload_paths :: proc(reload_dir: string) -> int {
-  _, paths := read_reload_dir_or_exit(reload_dir)
+  cfg, paths := read_reload_dir_or_exit(reload_dir)
   ok := true
   ok = remove_path_if_exists(paths.generated_root) && ok
   ok = remove_path_if_exists(paths.build_dir) && ok
+  runtime_path := ""
+  if cfg.runtime_path == DEFAULT_MANAGED_RUNTIME_PATH {
+    runtime_path = path_relative_to_reload_root(cfg, cfg.runtime_path)
+    ok = remove_path_if_exists(runtime_path) && ok
+  }
 
   if !ok {
     fmt.eprintln("failed to clean some reload paths")
+    if runtime_path != "" {
+      delete(runtime_path)
+    }
     return 1
   }
   fmt.printf("removed: %s\n", paths.generated_root)
   fmt.printf("removed: %s\n", paths.build_dir)
+  if runtime_path != "" {
+    fmt.printf("removed: %s\n", runtime_path)
+    delete(runtime_path)
+  }
   return 0
 }
 
@@ -696,6 +721,7 @@ append_odin_args :: proc(args: ^[dynamic]string, cfg: Reload_Target) {
 
 reload_check :: proc(reload_dir: string) -> int {
   cfg, paths := read_reload_dir_or_exit(reload_dir)
+  write_managed_runtime_or_exit(cfg)
   ok := true
   reload_package_path := path_relative_to_reload_root(cfg, cfg.package_path)
   defer delete(reload_package_path)
@@ -724,14 +750,6 @@ reload_check :: proc(reload_dir: string) -> int {
   }
   if cfg.module_name == "" {
     fmt.eprintln("module_name must not be empty")
-    ok = false
-  }
-  if cfg.generated_dir == "" {
-    fmt.eprintln("generated_dir must not be empty")
-    ok = false
-  }
-  if cfg.build_dir == "" {
-    fmt.eprintln("build_dir must not be empty")
     ok = false
   }
   if _, debounce_ok := strconv.parse_int(cfg.watch_debounce_ms, 10); !debounce_ok {
@@ -809,6 +827,7 @@ reload_check :: proc(reload_dir: string) -> int {
 
 reload_generate_or_exit :: proc(reload_dir: string, quiet := false) -> (Reload_Target, Reload_Paths) {
   cfg, paths := read_reload_dir_or_exit(reload_dir)
+  write_managed_runtime_or_exit(cfg)
   ensure_directory_or_exit(paths.module_dir)
   ensure_directory_or_exit(paths.host_dir)
   reload_package_path := path_relative_to_reload_root(cfg, cfg.package_path)
@@ -966,35 +985,6 @@ reload_watch :: proc(reload_dir: string) -> int {
   return 0
 }
 
-olive_reload_runtime_path_or_exit :: proc(from_dir: string) -> string {
-  if override, found := os.lookup_env("OLIVE_RELOAD_RUNTIME", context.allocator); found {
-    return override
-  }
-
-  executable_dir, exe_err := os.get_executable_directory(context.allocator)
-  if exe_err == nil {
-    candidate := join_or_exit([]string{executable_dir, "src", "olive_reload"})
-    delete(executable_dir)
-    if os.is_directory(candidate) {
-      return candidate
-    }
-    delete(candidate)
-  }
-
-  cwd, cwd_err := os.get_working_directory(context.allocator)
-  if cwd_err == nil {
-    candidate := join_or_exit([]string{cwd, "src", "olive_reload"})
-    delete(cwd)
-    if os.is_directory(candidate) {
-      return candidate
-    }
-    delete(candidate)
-  }
-
-  fmt.eprintln("could not find Olive reload runtime; set OLIVE_RELOAD_RUNTIME=/path/to/olive/src/olive_reload")
-  os.exit(1)
-}
-
 reload_init_program :: proc(dir: string) {
   ensure_directory_or_exit(dir)
   reload_dir := join_or_exit([]string{dir, "reload"})
@@ -1004,10 +994,6 @@ reload_init_program :: proc(dir: string) {
   defer delete(main_file)
   reload_file := join_or_exit([]string{reload_dir, "reload.odin"})
   defer delete(reload_file)
-  runtime_path := olive_reload_runtime_path_or_exit(dir)
-  defer delete(runtime_path)
-  runtime_import_path := relative_import_or_exit(reload_dir, runtime_path)
-  defer delete(runtime_import_path)
   root_import := relative_import_or_exit(reload_dir, dir)
   defer delete(root_import)
 
@@ -1067,7 +1053,7 @@ main :: proc() {
   strings.write_string(&reload_builder, "package reload\n\n")
   strings.write_string(&reload_builder, "import \"core:fmt\"\n")
   fmt.sbprintf(&reload_builder, "import program %q\n", root_import)
-  fmt.sbprintf(&reload_builder, "import olive_reload %q\n\n", runtime_import_path)
+  fmt.sbprintf(&reload_builder, "import olive_reload %q\n\n", DEFAULT_MANAGED_RUNTIME_PATH)
   strings.write_string(&reload_builder, `Reload_State :: program.Program_State
 
 init :: proc(state: ^Reload_State) {

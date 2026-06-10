@@ -139,7 +139,7 @@ to regular app procs.
 package reload
 
 import app ".."
-import olive_reload "../../../src/olive_reload"
+import olive_reload "../.olive/reload/runtime/olive_reload"
 
 Reload_State :: app.Program_State
 
@@ -155,6 +155,10 @@ Required declarations:
   resident host.
 - `run :: proc(state: ^Reload_State, host: ^olive_reload.Run_Host)`: one small
   unit of work. Return regularly so Olive can check for rebuilt code.
+
+Olive writes the `olive_reload` runtime package under `.olive/reload/runtime`
+when the CLI is used. The `.olive/` directory is generated development output
+and can be gitignored.
 
 ## Examples
 

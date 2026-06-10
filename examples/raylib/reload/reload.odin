@@ -1,7 +1,7 @@
 package reload
 
 import game ".."
-import olive_reload "../../../src/olive_reload"
+import olive_reload "../.olive/reload/runtime/olive_reload"
 import ray "vendor:raylib"
 
 Olive_Module_Name :: "raylib"
