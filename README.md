@@ -158,30 +158,21 @@ Required declarations:
 
 ## Examples
 
-The examples show the pattern in real code:
-
 ![Olive raylib demo](olive-raylib-demo.gif)
 
-- [`examples/raylib`](examples/raylib): a Raylib game loop using `host_init`,
-  `host_shutdown`, and `Olive_Odin_Args`.
-- [`examples/local_tool`](examples/local_tool): a long-running local worker with
-  composed durable state.
-
-Run an example from the repo root:
+- [`examples/raylib`](examples/raylib): a Raylib game loop demonstrates using some extra
+  procs for managing the host state.
+- [`examples/local_tool`](examples/local_tool): an example showing composed
+  durable state.
 
 ```sh
 odin build cmd/olive
 ./olive run examples/raylib/reload
 ```
 
-In another terminal:
-
 ```sh
 ./olive watch examples/raylib/reload
 ```
-
-Swap `examples/raylib/reload` for `examples/local_tool/reload` to run the local
-tool example.
 
 ## Adapter Reference
 
