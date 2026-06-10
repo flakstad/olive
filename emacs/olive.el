@@ -840,12 +840,20 @@ With prefix argument NO-PRINT, treat the code as statements."
 (defun olive--default-reload-target ()
   "Return a likely reload directory for the current buffer."
   (let* ((project (olive-project-directory))
-         (_package (olive-package-directory))
-         (_file (and buffer-file-name (expand-file-name buffer-file-name)))
+         (package (olive-package-directory))
+         (file (and buffer-file-name (expand-file-name buffer-file-name)))
          (candidates (delq nil
                            (list
+                            (and file
+                                 (string= (file-name-nondirectory file) "reload.odin")
+                                 (file-name-directory file))
+                            (and package
+                                 (expand-file-name "reload" package))
                             (expand-file-name "reload" project)))))
-    (or (seq-find #'file-exists-p candidates)
+    (or (seq-find
+         (lambda (candidate)
+           (file-exists-p (expand-file-name "reload.odin" candidate)))
+         candidates)
         (expand-file-name "reload" project))))
 
 (defun olive--read-reload-target ()
@@ -853,15 +861,14 @@ With prefix argument NO-PRINT, treat the code as statements."
   (let* ((default (olive--default-reload-target))
          (dir (file-name-directory default))
          (name (file-name-nondirectory default)))
-    (read-file-name "Reload target: " dir default t name)))
+    (read-file-name "Reload directory: " dir default t name)))
 
 (defun olive--interactive-reload-target (&optional choose)
   "Return reload directory for an interactive command.
 When CHOOSE is non-nil, prompt even if a default target exists."
-  (let ((default (olive--default-reload-target)))
-    (if (or choose (not (file-exists-p default)))
-        (olive--read-reload-target)
-      default)))
+  (if choose
+      (olive--read-reload-target)
+    (olive--default-reload-target)))
 
 (defun olive--reload-event-value (event key)
   "Return KEY from parsed reload EVENT."
