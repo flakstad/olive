@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Olive Web Resource Demo</title>
+  <link id="style" rel="stylesheet" href="/style.css?v={{generation}}">
+</head>
+<body>
+  <main>
+    <h1>Hellope!</h1>
+    <p class="subhead">This page is a small Olive resource watching demo.</p>
+    <ul>
+      <li>Edit <code>public/style.css</code> to change the styling.</li>
+      <li>Edit <code>public/index.html</code> to change this markup.</li>
+      <li>Olive calls <code>on_resource_change</code>; the app reloads the file and tells the browser to refresh.</li>
+      <li>Resource generation: <span id="generation">{{generation}}</span>. Requests: {{requests}}.</li>
+    </ul>
+  </main>
+  <script>
+    const events = new EventSource("/events");
+    events.addEventListener("refresh", event => {
+      location.reload();
+    });
+  </script>
+</body>
+</html>

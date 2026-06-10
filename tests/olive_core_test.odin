@@ -5,6 +5,7 @@ import "core:os"
 import "core:sync"
 import "core:strings"
 import "core:testing"
+import "core:time"
 import olive "../src/olive_core"
 
 build_olive_binary_mutex: sync.Mutex
@@ -34,6 +35,25 @@ exec :: proc(command: []string, working_dir := "") -> Exec_Result {
 delete_exec_result :: proc(result: Exec_Result) {
   delete(transmute([]byte)result.stdout)
   delete(transmute([]byte)result.stderr)
+}
+
+file_contains :: proc(path, needle: string) -> bool {
+  data, read_err := os.read_entire_file_from_path(path, context.allocator)
+  if read_err != nil {
+    return false
+  }
+  defer delete(data)
+  return strings.contains(string(data), needle)
+}
+
+wait_for_file_contains :: proc(path, needle: string, attempts: int, delay: time.Duration) -> bool {
+  for _ in 0..<attempts {
+    if file_contains(path, needle) {
+      return true
+    }
+    time.sleep(delay)
+  }
+  return false
 }
 
 write_sample_package :: proc(t: ^testing.T, root: string) -> (pkg: string, ok: bool) {
@@ -695,6 +715,165 @@ on_resource_change :: proc(state: ^Reload_State, path: string) {
     defer delete(generated_dir)
     testing.expect_value(t, os.exists(generated_dir), false)
   }
+}
+
+@(test)
+compiled_cli_run_notifies_resource_change :: proc(t: ^testing.T) {
+  root, dir_err := os.make_directory_temp("", "olive-cli-resource-run-test-*", context.allocator)
+  testing.expect_value(t, dir_err == nil, true)
+  if dir_err != nil {
+    return
+  }
+  defer {
+    _ = os.remove_all(root)
+    delete(root)
+  }
+
+  binary, binary_ok := build_olive_binary(t, root)
+  if !binary_ok {
+    return
+  }
+  defer delete(binary)
+
+  app_dir, app_join_err := os.join_path({root, "resource-app"}, context.allocator)
+  testing.expect_value(t, app_join_err == nil, true)
+  if app_join_err != nil {
+    return
+  }
+  defer delete(app_dir)
+  testing.expect_value(t, os.make_directory_all(app_dir) == nil, true)
+
+  resources_dir, resources_join_err := os.join_path({app_dir, "resources"}, context.allocator)
+  testing.expect_value(t, resources_join_err == nil, true)
+  if resources_join_err != nil {
+    return
+  }
+  defer delete(resources_dir)
+  testing.expect_value(t, os.make_directory_all(resources_dir) == nil, true)
+
+  resource_file, resource_join_err := os.join_path({resources_dir, "message.txt"}, context.allocator)
+  testing.expect_value(t, resource_join_err == nil, true)
+  if resource_join_err != nil {
+    return
+  }
+  defer delete(resource_file)
+  testing.expect_value(t, os.write_entire_file_from_string(resource_file, "initial\n") == nil, true)
+
+  main_path, main_join_err := os.join_path({app_dir, "main.odin"}, context.allocator)
+  testing.expect_value(t, main_join_err == nil, true)
+  if main_join_err != nil {
+    return
+  }
+  defer delete(main_path)
+  main_source := `package main
+
+import "core:time"
+
+Program_State :: struct {
+    ticks: int,
+    resource_seen: bool,
+}
+
+tick :: proc(state: ^Program_State) {
+    state.ticks += 1
+    time.sleep(50 * time.Millisecond)
+}
+`
+  testing.expect_value(t, os.write_entire_file_from_string(main_path, main_source) == nil, true)
+
+  reload_dir, reload_dir_join_err := os.join_path({app_dir, "reload"}, context.allocator)
+  testing.expect_value(t, reload_dir_join_err == nil, true)
+  if reload_dir_join_err != nil {
+    return
+  }
+  defer delete(reload_dir)
+  testing.expect_value(t, os.make_directory_all(reload_dir) == nil, true)
+
+  reload_path, reload_join_err := os.join_path({app_dir, "reload", "reload.odin"}, context.allocator)
+  testing.expect_value(t, reload_join_err == nil, true)
+  if reload_join_err != nil {
+    return
+  }
+  defer delete(reload_path)
+  reload_source := `package reload
+
+import "core:fmt"
+import program ".."
+import olive_reload "../.olive/reload/runtime/olive_reload"
+
+Reload_State :: program.Program_State
+
+Olive_Watch_Resources :: "../resources"
+
+run :: proc(state: ^Reload_State, host: ^olive_reload.Run_Host) {
+    program.tick(state)
+    if state.resource_seen {
+        olive_reload.request_exit(host)
+    }
+}
+
+on_resource_change :: proc(state: ^Reload_State, path: string) {
+    fmt.println("RESOURCE_HOOK", path)
+    state.resource_seen = true
+}
+`
+  testing.expect_value(t, os.write_entire_file_from_string(reload_path, reload_source) == nil, true)
+
+  check_result := exec([]string{binary, "check"}, app_dir)
+  defer delete_exec_result(check_result)
+  if check_result.exit_code != 0 {
+    fmt.eprintln(check_result.stdout)
+    fmt.eprintln(check_result.stderr)
+  }
+  testing.expect_value(t, check_result.exit_code, 0)
+  if check_result.exit_code != 0 {
+    return
+  }
+
+  output_path, output_join_err := os.join_path({root, "resource-run.out"}, context.allocator)
+  testing.expect_value(t, output_join_err == nil, true)
+  if output_join_err != nil {
+    return
+  }
+  defer delete(output_path)
+
+  output_file, open_err := os.open(output_path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY)
+  testing.expect_value(t, open_err == nil, true)
+  if open_err != nil {
+    return
+  }
+
+  process, start_err := os.process_start(os.Process_Desc{
+    command = []string{binary, "run"},
+    working_dir = app_dir,
+    stdout = output_file,
+    stderr = output_file,
+  })
+  testing.expect_value(t, start_err == nil, true)
+  if start_err != nil {
+    os.close(output_file)
+    return
+  }
+
+  started := wait_for_file_contains(output_path, "[olive] started generation=1", 40, 250 * time.Millisecond)
+  testing.expect_value(t, started, true)
+  testing.expect_value(t, os.write_entire_file_from_string(resource_file, "changed\n") == nil, true)
+
+  hook_called := wait_for_file_contains(output_path, "RESOURCE_HOOK", 80, 250 * time.Millisecond)
+  event_reported := wait_for_file_contains(output_path, "[olive] resource changed:", 20, 250 * time.Millisecond)
+  if !hook_called || !event_reported {
+    _ = os.process_kill(process)
+  }
+  state, wait_err := os.process_wait(process)
+  os.close(output_file)
+
+  testing.expect_value(t, wait_err == nil, true)
+  testing.expect_value(t, state.exited, true)
+  if state.exited {
+    testing.expect_value(t, state.exit_code, 0)
+  }
+  testing.expect_value(t, hook_called, true)
+  testing.expect_value(t, event_reported, true)
 }
 
 @(test)
