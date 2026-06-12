@@ -211,6 +211,9 @@ Optional lifecycle hooks are detected by name:
 Optional adapter constants:
 
 - `Olive_Module_Name :: "name"`: basename for generated reload binaries.
+  Pick a name that does not collide with third-party shared libraries your app
+  loads. For example, a Raylib app should not use `raylib` here on Windows,
+  because Olive would also emit `raylib.dll`.
 - `Olive_Odin_Args :: "-define:FOO=true"`: extra args passed to generated
   `odin check` and `odin build` commands.
 - `Olive_Watch :: ".."`: comma-separated paths to poll for `.odin` changes,

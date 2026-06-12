@@ -4,7 +4,7 @@ import game ".."
 import olive_reload "../.olive/reload/runtime/olive_reload"
 import ray "vendor:raylib"
 
-Olive_Module_Name :: "raylib"
+Olive_Module_Name :: "olive_raylib"
 Olive_Odin_Args :: "-define:RAYLIB_SHARED=true"
 
 Reload_State :: game.Game_State
