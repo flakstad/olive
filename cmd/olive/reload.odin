@@ -472,11 +472,9 @@ Reload_Paths :: struct {
 }
 
 executable_suffix_for :: proc(os_type: type_of(ODIN_OS)) -> string {
-  switch os_type {
+  #partial switch os_type {
   case .Windows:
     return ".exe"
-  case .Unknown, .Darwin, .Linux, .FreeBSD, .Haiku, .OpenBSD, .NetBSD, .WASI, .JS, .Orca, .Freestanding:
-    return ""
   }
   return ""
 }
