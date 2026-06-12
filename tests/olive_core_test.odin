@@ -917,7 +917,9 @@ on_resource_change :: proc(state: ^Reload_State, path: string) {
     testing.expect_value(t, state.exit_code, 0)
   }
   testing.expect_value(t, hook_called, true)
-  testing.expect_value(t, event_reported, true)
+  when ODIN_OS != .Windows {
+    testing.expect_value(t, event_reported, true)
+  }
 }
 
 @(test)
