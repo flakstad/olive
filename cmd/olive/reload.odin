@@ -291,6 +291,19 @@ remove_file_if_exact_content :: proc(path, expected_content: string) {
   }
 }
 
+normalize_import_path :: proc(path: string) -> string {
+  b := strings.builder_make()
+  defer strings.builder_destroy(&b)
+  for ch in transmute([]byte)path {
+    if ch == '\\' {
+      strings.write_byte(&b, '/')
+    } else {
+      strings.write_byte(&b, ch)
+    }
+  }
+  return strings.clone(strings.to_string(b))
+}
+
 relative_import_or_exit :: proc(from_dir, target_path: string) -> string {
   from_abs, from_err := os.get_absolute_path(from_dir, context.allocator)
   if from_err != nil {
@@ -309,7 +322,9 @@ relative_import_or_exit :: proc(from_dir, target_path: string) -> string {
     fmt.eprintln("failed to compute relative import")
     os.exit(1)
   }
-  return rel
+  normalized := normalize_import_path(rel)
+  delete(rel)
+  return normalized
 }
 
 reload_module_source :: proc(cfg: Reload_Target, module_dir, package_path, runtime_path: string) -> string {

@@ -195,3 +195,14 @@ executable_suffix_matches_target_os :: proc(t: ^testing.T) {
   testing.expect_value(t, executable_suffix_for(.Darwin), "")
   testing.expect_value(t, executable_suffix_for(.Linux), "")
 }
+
+@(test)
+normalize_import_path_replaces_backslashes :: proc(t: ^testing.T) {
+  normalized_windows := normalize_import_path(`..\reload\runtime`)
+  defer delete(normalized_windows)
+  testing.expect_value(t, normalized_windows, "../reload/runtime")
+
+  normalized_posix := normalize_import_path("../reload/runtime")
+  defer delete(normalized_posix)
+  testing.expect_value(t, normalized_posix, "../reload/runtime")
+}
