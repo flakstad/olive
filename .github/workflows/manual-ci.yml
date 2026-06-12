@@ -1,0 +1,48 @@
+name: Manual CI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            exe_suffix: ""
+          - os: ubuntu-latest
+            exe_suffix: ""
+          - os: windows-latest
+            exe_suffix: ".exe"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: laytan/setup-odin@v2.12.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Show Odin version
+        shell: bash
+        run: odin version
+
+      - name: Run unit tests
+        shell: bash
+        run: |
+          odin test cmd/olive -define:ODIN_TEST_LOG_LEVEL=warning
+          odin test tests -define:ODIN_TEST_LOG_LEVEL=warning
+
+      - name: Build CLI
+        shell: bash
+        run: odin build cmd/olive -out:./olive${{ matrix.exe_suffix }}
+
+      - name: Smoke test CLI
+        shell: bash
+        run: |
+          ./olive${{ matrix.exe_suffix }} init smoke-app
+          ./olive${{ matrix.exe_suffix }} check smoke-app/reload
+          ./olive${{ matrix.exe_suffix }} paths smoke-app/reload --json
+          ./olive${{ matrix.exe_suffix }} eval smoke-app $'state := Program_State{}\n_ = state' --no-print --internal
