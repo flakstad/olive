@@ -200,7 +200,11 @@ build_olive_binary :: proc(t: ^testing.T, root: string) -> (binary: string, ok: 
   sync.mutex_lock(&build_olive_binary_mutex)
   defer sync.mutex_unlock(&build_olive_binary_mutex)
 
-  binary_path, join_err := os.join_path({root, "olive"}, context.allocator)
+  executable_name := "olive"
+  when ODIN_OS == .Windows {
+    executable_name = "olive.exe"
+  }
+  binary_path, join_err := os.join_path({root, executable_name}, context.allocator)
   testing.expect_value(t, join_err == nil, true)
   if join_err != nil {
     return "", false

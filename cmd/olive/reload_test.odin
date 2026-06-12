@@ -188,3 +188,10 @@ run :: proc(state: ^Reload_State, host: rawptr) {
     testing.expect_value(t, cfg.runtime_path, DEFAULT_MANAGED_RUNTIME_PATH)
   }
 }
+
+@(test)
+executable_suffix_matches_target_os :: proc(t: ^testing.T) {
+  testing.expect_value(t, executable_suffix_for(.Windows), ".exe")
+  testing.expect_value(t, executable_suffix_for(.Darwin), "")
+  testing.expect_value(t, executable_suffix_for(.Linux), "")
+}
