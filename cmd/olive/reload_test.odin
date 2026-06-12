@@ -206,3 +206,24 @@ normalize_import_path_replaces_backslashes :: proc(t: ^testing.T) {
   defer delete(normalized_posix)
   testing.expect_value(t, normalized_posix, "../reload/runtime")
 }
+
+@(test)
+prepend_env_path_updates_path_entry :: proc(t: ^testing.T) {
+  env := make([dynamic]string)
+  defer delete_string_list(env)
+  append(&env, strings.clone("Path=C:\\tools"))
+  append(&env, strings.clone("HOME=C:\\Users\\olive"))
+
+  prepend_env_path(&env, "C:\\raylib", .Windows)
+
+  testing.expect_value(t, len(env), 2)
+  testing.expect_value(t, env[0], "PATH=C:\\raylib;C:\\tools")
+  testing.expect_value(t, env[1], "HOME=C:\\Users\\olive")
+}
+
+@(test)
+odin_define_enabled_detects_true_flags :: proc(t: ^testing.T) {
+  testing.expect_value(t, odin_define_enabled("-define:RAYLIB_SHARED=true -debug", "RAYLIB_SHARED"), true)
+  testing.expect_value(t, odin_define_enabled("-define:RAYLIB_SHARED=false", "RAYLIB_SHARED"), false)
+  testing.expect_value(t, odin_define_enabled("", "RAYLIB_SHARED"), false)
+}

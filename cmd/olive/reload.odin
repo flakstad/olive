@@ -498,6 +498,125 @@ executable_suffix :: proc() -> string {
   return executable_suffix_for(ODIN_OS)
 }
 
+path_list_separator_for :: proc(os_type: type_of(ODIN_OS)) -> string {
+  #partial switch os_type {
+  case .Windows:
+    return ";"
+  }
+  return ":"
+}
+
+env_entry_matches_key :: proc(entry, key: string, os_type: type_of(ODIN_OS)) -> bool {
+  if sep := strings.index(entry, "="); sep >= 0 {
+    entry_key := entry[:sep]
+    if os_type == .Windows {
+      return strings.equal_fold(entry_key, key)
+    }
+    return entry_key == key
+  }
+  return false
+}
+
+prepend_env_path :: proc(env: ^[dynamic]string, dir: string, os_type: type_of(ODIN_OS)) {
+  if dir == "" {
+    return
+  }
+  separator := path_list_separator_for(os_type)
+  for i in 0..<len(env^) {
+    if env_entry_matches_key(env^[i], "PATH", os_type) {
+      current := ""
+      if sep := strings.index(env^[i], "="); sep >= 0 {
+        current = env^[i][sep+1:]
+      }
+      updated := strings.clone(fmt.tprintf("PATH=%s", dir))
+      if current != "" {
+        delete(updated)
+        updated = strings.clone(fmt.tprintf("PATH=%s%s%s", dir, separator, current))
+      }
+      delete(env^[i])
+      env^[i] = updated
+      return
+    }
+  }
+  append(env, strings.clone(fmt.tprintf("PATH=%s", dir)))
+}
+
+odin_define_enabled :: proc(odin_args, name: string) -> bool {
+  expected := fmt.tprintf("-define:%s=true", name)
+  rest := odin_args
+  for {
+    part := rest
+    next := ""
+    if space := strings.index_any(rest, " \t"); space >= 0 {
+      part = rest[:space]
+      next = rest[space+1:]
+    }
+    if trim(part) == expected {
+      return true
+    }
+    if next == "" {
+      break
+    }
+    rest = next
+  }
+  return false
+}
+
+shared_runtime_directory_for :: proc(cfg: Reload_Target) -> (string, bool) {
+  if ODIN_OS != .Windows {
+    return "", false
+  }
+  if !odin_define_enabled(cfg.odin_args, "RAYLIB_SHARED") {
+    return "", false
+  }
+  state, stdout, stderr, exec_err := os.process_exec(
+    os.Process_Desc{command = {"odin", "root"}},
+    context.allocator,
+  )
+  defer delete(stdout)
+  defer delete(stderr)
+  if exec_err != nil || !state.exited || state.exit_code != 0 {
+    return "", false
+  }
+  odin_root := trim(string(stdout))
+  if odin_root == "" {
+    return "", false
+  }
+  runtime_dir, join_err := os.join_path([]string{odin_root, "vendor", "raylib", "windows"}, context.allocator)
+  if join_err != nil {
+    return "", false
+  }
+  if !os.is_directory(runtime_dir) {
+    delete(runtime_dir)
+    return "", false
+  }
+  return runtime_dir, true
+}
+
+delete_string_slice :: proc(values: []string) {
+  for value in values {
+    delete(value)
+  }
+  delete(values)
+}
+
+run_environment_for :: proc(cfg: Reload_Target) -> [dynamic]string {
+  inherited_env, env_err := os.environ(context.allocator)
+  if env_err != nil {
+    return make([dynamic]string)
+  }
+  defer delete_string_slice(inherited_env)
+  env := make([dynamic]string, 0, len(inherited_env))
+  for entry in inherited_env {
+    append(&env, strings.clone(entry))
+  }
+  if runtime_dir, ok := shared_runtime_directory_for(cfg); ok {
+    prepend_env_path(&env, runtime_dir, ODIN_OS)
+    delete(runtime_dir)
+  }
+  return env
+}
+
 reload_paths_for :: proc(cfg: Reload_Target) -> Reload_Paths {
   generated_root := path_relative_to_reload_root(cfg, "../.olive/reload/generated")
   module_dir := join_or_exit([]string{generated_root, "module"})
@@ -896,10 +1015,11 @@ exec_or_exit :: proc(args: []string, working_dir := "") -> int {
   return 1
 }
 
-exec_foreground_or_exit :: proc(args: []string, working_dir := "") -> int {
+exec_foreground_or_exit :: proc(args: []string, working_dir := "", env: []string = nil) -> int {
   process, start_err := os.process_start(os.Process_Desc{
     command = args,
     working_dir = working_dir,
+    env = env,
     stdin = os.stdin,
     stdout = os.stdout,
     stderr = os.stderr,
@@ -1214,12 +1334,14 @@ parse_reload_command :: proc() -> int {
     defer delete(reload_dir)
     host_args := make([dynamic]string)
     defer delete(host_args)
-    _, paths := reload_build_or_exit(reload_dir, true)
+    cfg, paths := reload_build_or_exit(reload_dir, true)
+    run_env := run_environment_for(cfg)
+    defer delete_string_list(run_env)
     append(&host_args, paths.host_binary)
     if json {
       append(&host_args, "--json")
     }
-    return exec_foreground_or_exit(host_args[:])
+    return exec_foreground_or_exit(host_args[:], "", run_env[:])
   case "-h", "--help", "help":
     reload_usage()
     return 0
