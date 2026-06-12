@@ -471,13 +471,27 @@ Reload_Paths :: struct {
   host_binary:    string,
 }
 
+executable_suffix_for :: proc(os_type: type_of(ODIN_OS)) -> string {
+  switch os_type {
+  case .Windows:
+    return ".exe"
+  case .Unknown, .Darwin, .Linux, .FreeBSD, .Haiku, .OpenBSD, .NetBSD, .WASI, .JS, .Orca, .Freestanding:
+    return ""
+  }
+  return ""
+}
+
+executable_suffix :: proc() -> string {
+  return executable_suffix_for(ODIN_OS)
+}
+
 reload_paths_for :: proc(cfg: Reload_Target) -> Reload_Paths {
   generated_root := path_relative_to_reload_root(cfg, "../.olive/reload/generated")
   module_dir := join_or_exit([]string{generated_root, "module"})
   host_dir := join_or_exit([]string{generated_root, "host"})
   build_dir := path_relative_to_reload_root(cfg, "../.olive/reload/build")
   module_binary := join_or_exit([]string{build_dir, fmt.tprintf("%s.%s", cfg.module_name, dynlib.LIBRARY_FILE_EXTENSION)})
-  host_binary := join_or_exit([]string{build_dir, fmt.tprintf("%s_host", cfg.module_name)})
+  host_binary := join_or_exit([]string{build_dir, fmt.tprintf("%s_host%s", cfg.module_name, executable_suffix())})
   return Reload_Paths{
     generated_root = generated_root,
     module_dir = module_dir,
