@@ -4,7 +4,8 @@ import game ".."
 import olive_reload "../.olive/reload/runtime/olive_reload"
 import ray "vendor:raylib"
 
-Olive_Module_Name :: "raylib"
+// Avoid colliding with Raylib's own `raylib.dll` on Windows.
+Olive_Module_Name :: "olive_raylib"
 Olive_Odin_Args :: "-define:RAYLIB_SHARED=true"
 
 Reload_State :: game.Game_State
