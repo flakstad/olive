@@ -159,6 +159,19 @@ delete_string_slice :: proc(values: []string) {
   delete(values)
 }
 
+normalize_import_path :: proc(path: string) -> string {
+  builder := strings.builder_make()
+  defer strings.builder_destroy(&builder)
+  for ch in transmute([]byte)path {
+    if ch == '\\' {
+      strings.write_byte(&builder, '/')
+    } else {
+      strings.write_byte(&builder, ch)
+    }
+  }
+  return strings.clone(strings.to_string(builder))
+}
+
 remove_value :: proc(package_path, name: string) -> bool {
   path, path_ok := store_path(package_path, name)
   if !path_ok {
@@ -466,8 +479,10 @@ write_runner :: proc(config: Config, directory: string) -> (path: string, ok: bo
     return "", false
   }
   defer delete(relative_import)
+  normalized_import := normalize_import_path(relative_import)
   local_config := config
-  local_config.import_path = relative_import
+  local_config.import_path = normalized_import
+  defer delete(normalized_import)
   output := render_runner(local_config)
   defer delete(output)
   joined, join_err := os.join_path({directory, "main.odin"}, context.allocator)

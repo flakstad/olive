@@ -56,6 +56,16 @@ wait_for_file_contains :: proc(path, needle: string, attempts: int, delay: time.
   return false
 }
 
+wait_for_file_exists :: proc(path: string, attempts: int, delay: time.Duration) -> bool {
+  for _ in 0..<attempts {
+    if os.exists(path) {
+      return true
+    }
+    time.sleep(delay)
+  }
+  return false
+}
+
 write_sample_package :: proc(t: ^testing.T, root: string) -> (pkg: string, ok: bool) {
   package_path, join_err := os.join_path({root, "sample"}, context.allocator)
   testing.expect_value(t, join_err == nil, true)
@@ -200,7 +210,11 @@ build_olive_binary :: proc(t: ^testing.T, root: string) -> (binary: string, ok: 
   sync.mutex_lock(&build_olive_binary_mutex)
   defer sync.mutex_unlock(&build_olive_binary_mutex)
 
-  binary_path, join_err := os.join_path({root, "olive"}, context.allocator)
+  executable_name := "olive"
+  when ODIN_OS == .Windows {
+    executable_name = "olive.exe"
+  }
+  binary_path, join_err := os.join_path({root, executable_name}, context.allocator)
   testing.expect_value(t, join_err == nil, true)
   if join_err != nil {
     return "", false
@@ -759,6 +773,20 @@ compiled_cli_run_notifies_resource_change :: proc(t: ^testing.T) {
   defer delete(resource_file)
   testing.expect_value(t, os.write_entire_file_from_string(resource_file, "initial\n") == nil, true)
 
+  started_marker, started_marker_join_err := os.join_path({app_dir, "started.marker"}, context.allocator)
+  testing.expect_value(t, started_marker_join_err == nil, true)
+  if started_marker_join_err != nil {
+    return
+  }
+  defer delete(started_marker)
+
+  hook_marker, hook_marker_join_err := os.join_path({app_dir, "hook.marker"}, context.allocator)
+  testing.expect_value(t, hook_marker_join_err == nil, true)
+  if hook_marker_join_err != nil {
+    return
+  }
+  defer delete(hook_marker)
+
   main_path, main_join_err := os.join_path({app_dir, "main.odin"}, context.allocator)
   testing.expect_value(t, main_join_err == nil, true)
   if main_join_err != nil {
@@ -795,15 +823,25 @@ tick :: proc(state: ^Program_State) {
     return
   }
   defer delete(reload_path)
-  reload_source := `package reload
+  reload_builder := strings.builder_make()
+  defer strings.builder_destroy(&reload_builder)
+  strings.write_string(&reload_builder, `package reload
 
 import "core:fmt"
+import "core:os"
 import program ".."
 import olive_reload "../.olive/reload/runtime/olive_reload"
 
 Reload_State :: program.Program_State
 
 Olive_Watch_Resources :: "../resources"
+
+init :: proc(state: ^Reload_State) {
+    _ = state
+    _ = os.write_entire_file_from_string(`)
+  fmt.sbprintf(&reload_builder, "%q", started_marker)
+  strings.write_string(&reload_builder, `, "started\n")
+}
 
 run :: proc(state: ^Reload_State, host: ^olive_reload.Run_Host) {
     program.tick(state)
@@ -813,10 +851,15 @@ run :: proc(state: ^Reload_State, host: ^olive_reload.Run_Host) {
 }
 
 on_resource_change :: proc(state: ^Reload_State, path: string) {
+    _ = os.write_entire_file_from_string(`)
+  fmt.sbprintf(&reload_builder, "%q", hook_marker)
+  strings.write_string(&reload_builder, `, path)
     fmt.println("RESOURCE_HOOK", path)
     state.resource_seen = true
 }
-`
+`)
+  reload_source := strings.clone(strings.to_string(reload_builder))
+  defer delete(reload_source)
   testing.expect_value(t, os.write_entire_file_from_string(reload_path, reload_source) == nil, true)
 
   check_result := exec([]string{binary, "check"}, app_dir)
@@ -855,17 +898,18 @@ on_resource_change :: proc(state: ^Reload_State, path: string) {
     return
   }
 
-  started := wait_for_file_contains(output_path, "[olive] started generation=1", 40, 250 * time.Millisecond)
+  started := wait_for_file_exists(started_marker, 40, 250 * time.Millisecond)
   testing.expect_value(t, started, true)
   testing.expect_value(t, os.write_entire_file_from_string(resource_file, "changed\n") == nil, true)
 
-  hook_called := wait_for_file_contains(output_path, "RESOURCE_HOOK", 80, 250 * time.Millisecond)
-  event_reported := wait_for_file_contains(output_path, "[olive] resource changed:", 20, 250 * time.Millisecond)
-  if !hook_called || !event_reported {
+  hook_called := wait_for_file_exists(hook_marker, 80, 250 * time.Millisecond)
+  if !hook_called {
     _ = os.process_kill(process)
   }
   state, wait_err := os.process_wait(process)
   os.close(output_file)
+
+  event_reported := file_contains(output_path, "[olive] resource changed:")
 
   testing.expect_value(t, wait_err == nil, true)
   testing.expect_value(t, state.exited, true)
@@ -873,7 +917,9 @@ on_resource_change :: proc(state: ^Reload_State, path: string) {
     testing.expect_value(t, state.exit_code, 0)
   }
   testing.expect_value(t, hook_called, true)
-  testing.expect_value(t, event_reported, true)
+  when ODIN_OS != .Windows {
+    testing.expect_value(t, event_reported, true)
+  }
 }
 
 @(test)

@@ -291,6 +291,19 @@ remove_file_if_exact_content :: proc(path, expected_content: string) {
   }
 }
 
+normalize_import_path :: proc(path: string) -> string {
+  b := strings.builder_make()
+  defer strings.builder_destroy(&b)
+  for ch in transmute([]byte)path {
+    if ch == '\\' {
+      strings.write_byte(&b, '/')
+    } else {
+      strings.write_byte(&b, ch)
+    }
+  }
+  return strings.clone(strings.to_string(b))
+}
+
 relative_import_or_exit :: proc(from_dir, target_path: string) -> string {
   from_abs, from_err := os.get_absolute_path(from_dir, context.allocator)
   if from_err != nil {
@@ -309,7 +322,9 @@ relative_import_or_exit :: proc(from_dir, target_path: string) -> string {
     fmt.eprintln("failed to compute relative import")
     os.exit(1)
   }
-  return rel
+  normalized := normalize_import_path(rel)
+  delete(rel)
+  return normalized
 }
 
 reload_module_source :: proc(cfg: Reload_Target, module_dir, package_path, runtime_path: string) -> string {
@@ -471,13 +486,25 @@ Reload_Paths :: struct {
   host_binary:    string,
 }
 
+executable_suffix_for :: proc(os_type: type_of(ODIN_OS)) -> string {
+  #partial switch os_type {
+  case .Windows:
+    return ".exe"
+  }
+  return ""
+}
+
+executable_suffix :: proc() -> string {
+  return executable_suffix_for(ODIN_OS)
+}
+
 reload_paths_for :: proc(cfg: Reload_Target) -> Reload_Paths {
   generated_root := path_relative_to_reload_root(cfg, "../.olive/reload/generated")
   module_dir := join_or_exit([]string{generated_root, "module"})
   host_dir := join_or_exit([]string{generated_root, "host"})
   build_dir := path_relative_to_reload_root(cfg, "../.olive/reload/build")
   module_binary := join_or_exit([]string{build_dir, fmt.tprintf("%s.%s", cfg.module_name, dynlib.LIBRARY_FILE_EXTENSION)})
-  host_binary := join_or_exit([]string{build_dir, fmt.tprintf("%s_host", cfg.module_name)})
+  host_binary := join_or_exit([]string{build_dir, fmt.tprintf("%s_host%s", cfg.module_name, executable_suffix())})
   return Reload_Paths{
     generated_root = generated_root,
     module_dir = module_dir,
