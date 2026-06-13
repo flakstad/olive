@@ -506,6 +506,18 @@ path_list_separator_for :: proc(os_type: type_of(ODIN_OS)) -> string {
   return ":"
 }
 
+shared_library_env_var_for :: proc(os_type: type_of(ODIN_OS)) -> string {
+  #partial switch os_type {
+  case .Windows:
+    return "PATH"
+  case .Linux:
+    return "LD_LIBRARY_PATH"
+  case .Darwin:
+    return "DYLD_LIBRARY_PATH"
+  }
+  return "PATH"
+}
+
 env_entry_matches_key :: proc(entry, key: string, os_type: type_of(ODIN_OS)) -> bool {
   if sep := strings.index(entry, "="); sep >= 0 {
     entry_key := entry[:sep]
@@ -517,28 +529,28 @@ env_entry_matches_key :: proc(entry, key: string, os_type: type_of(ODIN_OS)) -> 
   return false
 }
 
-prepend_env_path :: proc(env: ^[dynamic]string, dir: string, os_type: type_of(ODIN_OS)) {
+prepend_env_path :: proc(env: ^[dynamic]string, key, dir: string, os_type: type_of(ODIN_OS)) {
   if dir == "" {
     return
   }
   separator := path_list_separator_for(os_type)
   for i in 0..<len(env^) {
-    if env_entry_matches_key(env^[i], "PATH", os_type) {
+    if env_entry_matches_key(env^[i], key, os_type) {
       current := ""
       if sep := strings.index(env^[i], "="); sep >= 0 {
         current = env^[i][sep+1:]
       }
-      updated := strings.clone(fmt.tprintf("PATH=%s", dir))
+      updated := strings.clone(fmt.tprintf("%s=%s", key, dir))
       if current != "" {
         delete(updated)
-        updated = strings.clone(fmt.tprintf("PATH=%s%s%s", dir, separator, current))
+        updated = strings.clone(fmt.tprintf("%s=%s%s%s", key, dir, separator, current))
       }
       delete(env^[i])
       env^[i] = updated
       return
     }
   }
-  append(env, strings.clone(fmt.tprintf("PATH=%s", dir)))
+  append(env, strings.clone(fmt.tprintf("%s=%s", key, dir)))
 }
 
 odin_define_enabled :: proc(odin_args, name: string) -> bool {
@@ -563,9 +575,6 @@ odin_define_enabled :: proc(odin_args, name: string) -> bool {
 }
 
 shared_runtime_directory_for :: proc(cfg: Reload_Target) -> (string, bool) {
-  if ODIN_OS != .Windows {
-    return "", false
-  }
   if !odin_define_enabled(cfg.odin_args, "RAYLIB_SHARED") {
     return "", false
   }
@@ -582,7 +591,18 @@ shared_runtime_directory_for :: proc(cfg: Reload_Target) -> (string, bool) {
   if odin_root == "" {
     return "", false
   }
-  runtime_dir, join_err := os.join_path([]string{odin_root, "vendor", "raylib", "windows"}, context.allocator)
+  raylib_platform_dir := ""
+  #partial switch ODIN_OS {
+  case .Windows:
+    raylib_platform_dir = "windows"
+  case .Linux:
+    raylib_platform_dir = "linux"
+  case .Darwin:
+    raylib_platform_dir = "macos"
+  case:
+    return "", false
+  }
+  runtime_dir, join_err := os.join_path([]string{odin_root, "vendor", "raylib", raylib_platform_dir}, context.allocator)
   if join_err != nil {
     return "", false
   }
@@ -611,7 +631,7 @@ run_environment_for :: proc(cfg: Reload_Target) -> [dynamic]string {
     append(&env, strings.clone(entry))
   }
   if runtime_dir, ok := shared_runtime_directory_for(cfg); ok {
-    prepend_env_path(&env, runtime_dir, ODIN_OS)
+    prepend_env_path(&env, shared_library_env_var_for(ODIN_OS), runtime_dir, ODIN_OS)
     delete(runtime_dir)
   }
   return env
