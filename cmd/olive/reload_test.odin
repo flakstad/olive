@@ -214,11 +214,29 @@ prepend_env_path_updates_path_entry :: proc(t: ^testing.T) {
   append(&env, strings.clone("Path=C:\\tools"))
   append(&env, strings.clone("HOME=C:\\Users\\olive"))
 
-  prepend_env_path(&env, "C:\\raylib", .Windows)
+  prepend_env_path(&env, "PATH", "C:\\raylib", .Windows)
 
   testing.expect_value(t, len(env), 2)
   testing.expect_value(t, env[0], "PATH=C:\\raylib;C:\\tools")
   testing.expect_value(t, env[1], "HOME=C:\\Users\\olive")
+}
+
+@(test)
+prepend_env_path_uses_platform_variable_name :: proc(t: ^testing.T) {
+  env := make([dynamic]string)
+  defer delete_string_list(env)
+
+  prepend_env_path(&env, "LD_LIBRARY_PATH", "/tmp/raylib", .Linux)
+
+  testing.expect_value(t, len(env), 1)
+  testing.expect_value(t, env[0], "LD_LIBRARY_PATH=/tmp/raylib")
+}
+
+@(test)
+shared_library_env_var_matches_target_os :: proc(t: ^testing.T) {
+  testing.expect_value(t, shared_library_env_var_for(.Windows), "PATH")
+  testing.expect_value(t, shared_library_env_var_for(.Linux), "LD_LIBRARY_PATH")
+  testing.expect_value(t, shared_library_env_var_for(.Darwin), "DYLD_LIBRARY_PATH")
 }
 
 @(test)
