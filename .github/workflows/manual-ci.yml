@@ -1,6 +1,8 @@
-name: Manual CI
+name: CI
 
 on:
+  push:
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -46,3 +48,25 @@ jobs:
           ./olive${{ matrix.exe_suffix }} check smoke-app/reload
           ./olive${{ matrix.exe_suffix }} paths smoke-app/reload --json
           ./olive${{ matrix.exe_suffix }} eval smoke-app $'state := Program_State{}\n_ = state' --no-print --internal
+
+      - name: Smoke test Raylib startup on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $stdout = Join-Path $PWD "raylib-run.stdout.log"
+          $stderr = Join-Path $PWD "raylib-run.stderr.log"
+          $proc = Start-Process -FilePath ".\olive.exe" `
+            -ArgumentList "run", "examples/raylib/reload" `
+            -PassThru `
+            -RedirectStandardOutput $stdout `
+            -RedirectStandardError $stderr
+
+          Start-Sleep -Seconds 5
+          $proc.Refresh()
+          if ($proc.HasExited) {
+            if (Test-Path $stdout) { Get-Content $stdout }
+            if (Test-Path $stderr) { Get-Content $stderr }
+            throw "Raylib example exited early with code $($proc.ExitCode)"
+          }
+
+          cmd /c "taskkill /PID $($proc.Id) /T /F" | Out-Null
