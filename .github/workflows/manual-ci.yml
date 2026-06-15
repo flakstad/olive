@@ -63,10 +63,20 @@ jobs:
 
           Start-Sleep -Seconds 5
           $proc.Refresh()
-          if ($proc.HasExited) {
-            if (Test-Path $stdout) { Get-Content $stdout }
-            if (Test-Path $stderr) { Get-Content $stderr }
-            throw "Raylib example exited early with code $($proc.ExitCode)"
+          $stdoutText = if (Test-Path $stdout) { Get-Content $stdout -Raw } else { "" }
+          $stderrText = if (Test-Path $stderr) { Get-Content $stderr -Raw } else { "" }
+          $combined = $stdoutText + "`n" + $stderrText
+
+          if ($combined -match "raylib\.dll was not found") {
+            throw "Raylib DLL lookup still fails"
           }
 
-          cmd /c "taskkill /PID $($proc.Id) /T /F" | Out-Null
+          if ($combined -notmatch "INFO: Initializing raylib") {
+            if ($stdoutText) { $stdoutText }
+            if ($stderrText) { $stderrText }
+            throw "Raylib never initialized on the Windows runner"
+          }
+
+          if (-not $proc.HasExited) {
+            cmd /c "taskkill /PID $($proc.Id) /T /F" | Out-Null
+          }
