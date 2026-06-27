@@ -1,4 +1,6 @@
 ;;; olive.el --- Scratch Odin probing helpers -*- lexical-binding: t; -*-
+;; Copyright (c) Andreas Flakstad and Olive contributors
+;; SPDX-License-Identifier: MIT
 
 ;; This is intentionally small: it shells out to the olive CLI, displays
 ;; results in Emacs buffers, and leaves Odin semantics to Odin itself.

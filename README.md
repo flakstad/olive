@@ -340,7 +340,7 @@ trying Olive in real Odin projects are useful.
 
 ## License
 
-MIT. See [`LICENSE`](LICENSE).
+Olive is licensed under the MIT License. See [`LICENSE`](LICENSE).
 
 ## Inspiration
 

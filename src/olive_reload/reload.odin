@@ -1,3 +1,6 @@
+// Copyright (c) Andreas Flakstad and Olive contributors
+// SPDX-License-Identifier: MIT
+
 package olive_reload
 
 import "core:dynlib"

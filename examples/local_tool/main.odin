@@ -1,3 +1,6 @@
+// Copyright (c) Andreas Flakstad and Olive contributors
+// SPDX-License-Identifier: MIT
+
 package main
 
 import "core:fmt"
