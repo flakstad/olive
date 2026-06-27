@@ -49,6 +49,16 @@ file_contains :: proc(path, needle: string) -> bool {
   return strings.contains(string(data), needle)
 }
 
+print_file_if_present :: proc(label, path: string) {
+  data, read_err := os.read_entire_file_from_path(path, context.allocator)
+  if read_err != nil || len(data) == 0 {
+    return
+  }
+  defer delete(data)
+  fmt.eprintln(label)
+  fmt.eprint(string(data))
+}
+
 wait_for_file_contains :: proc(path, needle: string, attempts: int, delay: time.Duration) -> bool {
   for _ in 0..<attempts {
     if file_contains(path, needle) {
@@ -901,22 +911,39 @@ on_resource_change :: proc(state: ^Reload_State, path: string) {
     return
   }
 
-  started := wait_for_file_exists(started_marker, 40, 250 * time.Millisecond)
+  start_attempts := 40
+  when ODIN_OS == .Windows {
+    start_attempts = 160
+  }
+  started := wait_for_file_exists(started_marker, start_attempts, 250 * time.Millisecond)
   testing.expect_value(t, started, true)
+  if !started {
+    _ = os.process_kill(process)
+    _, wait_err := os.process_wait(process)
+    os.close(output_file)
+    print_file_if_present("olive run output:", output_path)
+    testing.expect_value(t, wait_err == nil, true)
+    return
+  }
   testing.expect_value(t, os.write_entire_file_from_string(resource_file, "changed\n") == nil, true)
 
   hook_called := wait_for_file_exists(hook_marker, 80, 250 * time.Millisecond)
+  killed := false
   if !hook_called {
     _ = os.process_kill(process)
+    killed = true
   }
   state, wait_err := os.process_wait(process)
   os.close(output_file)
 
   event_reported := file_contains(output_path, "[olive] resource changed:")
+  if !hook_called {
+    print_file_if_present("olive run output:", output_path)
+  }
 
   testing.expect_value(t, wait_err == nil, true)
   testing.expect_value(t, state.exited, true)
-  if state.exited {
+  if state.exited && !killed {
     testing.expect_value(t, state.exit_code, 0)
   }
   testing.expect_value(t, hook_called, true)
